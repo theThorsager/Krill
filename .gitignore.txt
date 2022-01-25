@@ -1,2 +1,0 @@
-./ACEX30/bin
-./ACEX30/obj

@@ -17,5 +17,9 @@
     <StartArguments></StartArguments>
     <StartAction>Program</StartAction>
   </PropertyGroup>
+  
+  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
+    <Exec Command="xcopy &quot;$(TargetDir)$(TargetFileName)&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y"/>
+  </Target>
 
 </Project>
