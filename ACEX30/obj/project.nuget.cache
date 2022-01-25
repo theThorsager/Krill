@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "dgSpecHash": "NmaCxqXAZaVOUo45T5CHeBsC5O3E8bSDaGgBlIdssWDI1SiBF9UDf/iIBTf5mw6gO4fwEJxeCSEPaGHJo3Upyg==",
+  "success": true,
+  "projectFilePath": "C:\\Users\\kalle.thorsager\\source\\repos\\ACEX30\\ACEX30\\ACEX30.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\kalle.thorsager\\.nuget\\packages\\grasshopper\\7.13.21348.13001\\grasshopper.7.13.21348.13001.nupkg.sha512",
+    "C:\\Users\\kalle.thorsager\\.nuget\\packages\\rhinocommon\\7.13.21348.13001\\rhinocommon.7.13.21348.13001.nupkg.sha512"
+  ],
+  "logs": []
+}
