@@ -4,9 +4,9 @@ using Rhino.Geometry;
 using System;
 using System.Collections.Generic;
 
-namespace ACEX30
+namespace Krill.Grasshopper
 {
-    public class ACEX30 : GH_Component
+    public class Krill : GH_Component
     {
         /// <summary>
         /// Each implementation of GH_Component must provide a public 
@@ -15,10 +15,10 @@ namespace ACEX30
         /// Subcategory the panel. If you use non-existing tab or panel names, 
         /// new tabs/panels will automatically be created.
         /// </summary>
-        public ACEX30()
-          : base("ACEX30", "Nickname",
+        public Krill()
+          : base("Krill", "Krill",
             "Description",
-            "Krill", "Solver")
+            "Krill", "TestComponents")
         {
         }
 
@@ -58,6 +58,6 @@ namespace ACEX30
         /// It is vital this Guid doesn't change otherwise old ghx files 
         /// that use the old ID will partially fail during loading.
         /// </summary>
-        public override Guid ComponentGuid => new Guid("81E6EB96-95A9-4254-9CAD-95C647CBD90D");
+        public override Guid ComponentGuid => new Guid("81E6EB96-95A9-4454-9CAD-95C647CBD90D");
     }
 }

@@ -3,11 +3,11 @@ using Grasshopper.Kernel;
 using System;
 using System.Drawing;
 
-namespace ACEX30
+namespace Krill.Grasshopper
 {
-    public class ACEX30Info : GH_AssemblyInfo
+    public class KrillInfo : GH_AssemblyInfo
     {
-        public override string Name => "ACEX30";
+        public override string Name => "Krill";
 
         //Return a 24x24 pixel bitmap to represent this GHA library.
         public override Bitmap Icon => null;
