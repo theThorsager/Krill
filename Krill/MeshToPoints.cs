@@ -29,6 +29,7 @@ namespace Krill
         double delta;
         int n;
         int[] cellValues;
+        int index = 0;
 
         public List<Point3d> points = new List<Point3d> ();     // For debugging, remove
 
@@ -121,32 +122,28 @@ namespace Krill
 
         bool FindFirstInside(int val, bool inside, out Coord coord)
         {
-            // test center
-            Point3d center = mesh.GetBoundingBox(true).Center;
-            if (mesh.IsPointInside(center, 1e-3, true) == inside && cellValues[PointToIndex(center)] == val)
+            // Find a cell with the right value
+            // check if it is inside the mesh, else iterate until the we pass a border again
+            // Uses a global index such that a new interior point is found each time the method is called, until all points are found
+            for (; index < cellValues.Length; index++)
             {
-                coord = PointToCoord(center);
-                return true;
-            }
-            // Find an edge
-            for (int i = 0; i < cellValues.Length; i++)
-            {
-                if (cellValues[i] != val)
+                if (cellValues[index] != val)
+                    continue;
+
+                if (mesh.IsPointInside(IndexToPoint(index) + new Vector3d(delta / 2, delta / 2, delta / 2), 1e-3, true) != inside)
                 {
-                    i++;
-                    for (; i < cellValues.Length; i++)
+                    index++;
+                    for (; index < cellValues.Length; index++)
                     {
-                        if (cellValues[i] == val)
-                        {
-                            if (mesh.IsPointInside(IndexToPoint(i) + new Vector3d(delta / 2, delta / 2, delta / 2), 1e-3, true) == inside)
-                            {
-                                coord = IndexToCoord(i);
-                                return true;
-                            }
-                            else
-                                break;
-                        }
+                        if (cellValues[index] != val)
+                            break;
                     }
+                }
+                else
+                {
+                    coord = IndexToCoord(index);
+                    index++;
+                    return true;
                 }
             }
 
