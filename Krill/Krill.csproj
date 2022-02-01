@@ -10,6 +10,7 @@
   
   <ItemGroup>
     <PackageReference Include="Grasshopper" Version="7.14.22010.17001" IncludeAssets="compile;build" />
+    <PackageReference Include="GrasshopperAsyncComponent" Version="1.2.3" />
     <PackageReference Include="RhinoCommon" Version="7.14.22010.17001" />
   </ItemGroup>
   
@@ -21,6 +22,7 @@
   
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="xcopy &quot;$(TargetDir)$(TargetFileName)&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
+    <Exec Command="xcopy &quot;$(TargetDir)GrasshopperAsyncComponent.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
   </Target>
 
 </Project>
