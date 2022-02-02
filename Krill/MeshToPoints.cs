@@ -12,7 +12,7 @@ namespace Krill
         Mesh mesh;
         int index = 0;
 
-        Voxels<int> voxels;
+        public Voxels<int> voxels;
 
         public List<Point3d> points = new List<Point3d> ();     // For debugging, remove
 
@@ -200,16 +200,6 @@ namespace Krill
             }
         }
 
-        public List<Point3d> GetPointsAt(int val)
-        {
-            List<Point3d> result = new List<Point3d>(); 
-            for (int i = 0; i < voxels.cellValues.Length; i++)
-            {
-                if (voxels.cellValues[i] == val)
-                    result.Add(voxels.IndexToPoint(i));
-            }
-            return result;
-        }
 
         
     }
