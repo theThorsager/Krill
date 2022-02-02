@@ -75,6 +75,8 @@ namespace Krill
 
                 }
 
+                forceVoxels.cellValues[i] += Vector3d.ZAxis;
+
             }
         }
 
@@ -97,7 +99,7 @@ namespace Krill
         {
             // Based on velocity_verlet from Peripy
 
-            for (int i = 0; i < noVoxels; i++)
+            for (int i = 0; i < noVoxels*noVoxels*noVoxels; i++)
             {
                 if (startVoxels.cellValues[i] == 0)
                 {
