@@ -7,53 +7,36 @@ using Rhino.Geometry;
 
 namespace Krill
 {
-    struct Coord
-    {
-        public int X;
-        public int Y;
-        public int Z;
-        public Coord(int x, int y, int z)
-        {
-            X = x; Y = y; Z = z; 
-        }
-
-        public static Coord operator-(Coord a, Coord b)
-        {
-            return new Coord(a.X-b.X, a.Y-b.Y, a.Z-b.Z);
-        }
-    }
     class MeshToPoints
     {
         Mesh mesh;
-        Point3d origin;
-        double delta;
-        int n;
-        int[] cellValues;
         int index = 0;
+
+        Voxels<int> voxels;
 
         public List<Point3d> points = new List<Point3d> ();     // For debugging, remove
 
-        public MeshToPoints(Mesh mesh_, double delta_)
+        public MeshToPoints(Mesh mesh, double delta)
         {
-            mesh = mesh_;
-            delta = delta_;
+            this.mesh = mesh;
             
             if (!mesh.IsSolid)
             {
                 Console.WriteLine("Non Solid Mesh");
             }
-            
 
             BoundingBox bbox = mesh.GetBoundingBox(true);
 
-            n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate + 6 * delta) / delta);
-            origin = bbox.Min - new Vector3d(3 * delta, 3 * delta, 3 * delta);
-            cellValues = new int[n * n * n];
+            int n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate + 6 * delta) / delta);
+            Point3d origin = bbox.Min - new Vector3d(3 * delta, 3 * delta, 3 * delta);
+
+            voxels = new Voxels<int>(origin, delta, n);
+
         }
 
         public void FillBoundaryValues()
         {
-            double del = delta / Math.Sqrt(2);
+            double del = voxels.delta / Math.Sqrt(2);
             foreach (MeshFace face in mesh.Faces)
             {
                 bool isfirst = true;
@@ -100,8 +83,9 @@ namespace Krill
 
                 points.AddRange(pts);
 
-                foreach (Point3d pt in pts)
-                    cellValues[PointToIndex(pt)] = 1;
+                // change this to be not be in a separate loop later
+                foreach (Point3d pt in pts) 
+                    voxels.cellValues[voxels.PointToIndex(pt)] = 1;
 
                 if (face.IsQuad && isfirst)
                 {
@@ -125,23 +109,23 @@ namespace Krill
             // Find a cell with the right value
             // check if it is inside the mesh, else iterate until the we pass a border again
             // Uses a global index such that a new interior point is found each time the method is called, until all points are found
-            for (; index < cellValues.Length; index++)
+            for (; index < voxels.cellValues.Length; index++)
             {
-                if (cellValues[index] != val)
+                if (voxels.cellValues[index] != val)
                     continue;
 
-                if (mesh.IsPointInside(IndexToPoint(index) + new Vector3d(delta / 2, delta / 2, delta / 2), 1e-3, true) != inside)
+                if (mesh.IsPointInside(voxels.IndexToPoint(index) + new Vector3d(voxels.delta / 2, voxels.delta / 2, voxels.delta / 2), 1e-3, true) != inside)
                 {
                     index++;
-                    for (; index < cellValues.Length; index++)
+                    for (; index < voxels.cellValues.Length; index++)
                     {
-                        if (cellValues[index] != val)
+                        if (voxels.cellValues[index] != val)
                             break;
                     }
                 }
                 else
                 {
-                    coord = IndexToCoord(index);
+                    coord = voxels.IndexToCoord(index);
                     index++;
                     return true;
                 }
@@ -154,59 +138,60 @@ namespace Krill
 
         public void FloodFill(Coord first, int from, int to)
         {
-            Stack<Coord> stack = new Stack<Coord>();
+            int n = voxels.n;
+            Stack <Coord> stack = new Stack<Coord>();
             stack.Push(first);
             while (stack.Count > 0)
             {
                 Coord temp = stack.Pop();
                 int x1 = temp.X;
-                while (x1 > 0 && cellValues[ToLinearIndex(x1 - 1, temp.Y, temp.Z)] == from)
+                while (x1 > 0 && voxels.cellValues[voxels.ToLinearIndex(x1 - 1, temp.Y, temp.Z)] == from)
                     x1--;
 
                 bool spanLeft = false;
                 bool spanRight = false;
                 bool spanUp = false;
                 bool spanDown = false;
-                int offset = ToLinearIndex(0, temp.Y, temp.Z);
-                while (x1 < n && cellValues[x1 + offset] == from)
+                int offset = voxels.ToLinearIndex(0, temp.Y, temp.Z);
+                while (x1 < n && voxels.cellValues[x1 + offset] == from)
                 {
-                    cellValues[x1 + offset] = to;
-                    if (!spanLeft && temp.Y > 0 && cellValues[x1 + offset - n] == from)
+                    voxels.cellValues[x1 + offset] = to;
+                    if (!spanLeft && temp.Y > 0 && voxels.cellValues[x1 + offset - n] == from)
                     {
                         stack.Push(new Coord(x1, temp.Y - 1, temp.Z));
                         spanLeft = true;
                     }
-                    else if (spanLeft && temp.Y - 1 == 0 && cellValues[x1 + offset - n] != from)
+                    else if (spanLeft && temp.Y - 1 == 0 && voxels.cellValues[x1 + offset - n] != from)
                     {
                         spanLeft = false;
                     }
 
-                    if (!spanRight && temp.Y < n -1 && cellValues[x1 + offset + n] == from)
+                    if (!spanRight && temp.Y < n -1 && voxels.cellValues[x1 + offset + n] == from)
                     {
                         stack.Push(new Coord(x1, temp.Y + 1, temp.Z));
                         spanRight = true;
                     }
-                    else if (spanRight && temp.Y + 1 < n - 1 && cellValues[x1 + offset + n] != from)
+                    else if (spanRight && temp.Y + 1 < n - 1 && voxels.cellValues[x1 + offset + n] != from)
                     {
                         spanRight = false;
                     }
 
-                    if (!spanDown && temp.Z > 0 && cellValues[x1 + offset - n*n] == from)
+                    if (!spanDown && temp.Z > 0 && voxels.cellValues[x1 + offset - n*n] == from)
                     {
                         stack.Push(new Coord(x1, temp.Y, temp.Z - 1));
                         spanDown = true;
                     }
-                    else if (spanDown && temp.Z - 1 == 0 && cellValues[x1 + offset - n*n] != from)
+                    else if (spanDown && temp.Z - 1 == 0 && voxels.cellValues[x1 + offset - n*n] != from)
                     {
                         spanDown = false;
                     }
 
-                    if (!spanUp && temp.Z < n - 1 && cellValues[x1 + offset + n * n] == from)
+                    if (!spanUp && temp.Z < n - 1 && voxels.cellValues[x1 + offset + n * n] == from)
                     {
                         stack.Push(new Coord(x1, temp.Y, temp.Z + 1));
                         spanUp = true;
                     }
-                    else if (spanUp && temp.Z + 1 < n - 1 && cellValues[x1 + offset + n * n] != from)
+                    else if (spanUp && temp.Z + 1 < n - 1 && voxels.cellValues[x1 + offset + n * n] != from)
                     {
                         spanUp = false;
                     }
@@ -218,57 +203,14 @@ namespace Krill
         public List<Point3d> GetPointsAt(int val)
         {
             List<Point3d> result = new List<Point3d>(); 
-            for (int i = 0; i < cellValues.Length; i++)
+            for (int i = 0; i < voxels.cellValues.Length; i++)
             {
-                if (cellValues[i] == val)
-                    result.Add(IndexToPoint(i));
+                if (voxels.cellValues[i] == val)
+                    result.Add(voxels.IndexToPoint(i));
             }
             return result;
         }
 
-        Point3d IndexToPoint(int i, int j, int k)
-        {
-            return new Point3d(origin.X + delta * i, origin.Y + delta * j, origin.Z + delta * k);
-        }
-
-        Coord IndexToCoord(int i)
-        {
-            To3DIndex(ref i, out int j, out int k);
-            return new Coord(i, j, k);
-        }
-        Point3d IndexToPoint(int i)
-        {
-            To3DIndex(ref i, out int j, out int k);
-            return new Point3d(origin.X + delta * i, origin.Y + delta * j, origin.Z + delta * k);
-        }
-
-        int PointToIndex(Point3d pt)
-        {
-            pt -= (Vector3d)origin;
-            pt /= delta;
-            return ToLinearIndex((int)pt.X, (int)pt.Y, (int)pt.Z);
-        }
-        int CoordToIndex(Coord pt)
-        {
-            return ToLinearIndex(pt.X, pt.Y, pt.Z);
-        }
-        Coord PointToCoord(Point3d pt)
-        {
-            pt -= (Vector3d)origin;
-            pt /= delta;
-            return new Coord((int)pt.X, (int)pt.Y, (int)pt.Z);
-        }
-
-        int ToLinearIndex(int i, int j, int k)
-        {
-            return i + j*n + k*n*n;
-        }
-
-        void To3DIndex(ref int i, out int j, out int k)
-        {
-            k = i / (n * n);
-            j = (i - k*n*n) / n;
-            i = i - k * n * n - j * n;
-        }
+        
     }
 }
