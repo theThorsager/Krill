@@ -60,8 +60,26 @@ namespace Krill
                             continue;
 
                         updateForce(I, nBonds);
+
+                        if (startVoxels.cellValues[I] == 3)
+                            applyDirechlet(I, nBonds);
                     }
                 }
+            }
+        }
+
+        private void applyDirechlet(int i, int nBonds)
+        {
+            for (int a = 0; a < nBonds; a++)
+            {
+                int j = i + nlist[a];
+
+                if (startVoxels.cellValues[j] == 0)
+                    CalcBondForce(i, j);
+
+                j = i - nlist[a];
+                if (startVoxels.cellValues[j] == 0)
+                    CalcBondForce(i, j);
             }
         }
 

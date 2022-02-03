@@ -46,8 +46,10 @@ namespace Krill.Grasshopper
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddMeshParameter("mesh", "m", "", GH_ParamAccess.item);
-            pManager.AddParameter(new Param.SettingsParam());
+            pManager.AddMeshParameter("bc", "m", "", GH_ParamAccess.item);
             pManager[1].Optional = true;
+            pManager.AddParameter(new Param.SettingsParam());
+            pManager[2].Optional = true;
         }
 
         /// <summary>
@@ -91,6 +93,7 @@ namespace Krill.Grasshopper
     class LinearPeridynamicsWorker : WorkerInstance
     {
         Mesh mesh { get; set; } = null;
+        BoundaryCondition bcs { get; set; } = null;
         Settings settings { get; set; } = null;
         VoxelConduit conduit { get; set; }
         public LinearPeridynamicsWorker(VoxelConduit vcon) : base(null)
@@ -108,12 +111,18 @@ namespace Krill.Grasshopper
             if (settings is null)
                 settings = new Settings();
 
+            if (settings.delta <= Math.Sqrt(2))
+                settings.delta = Math.Sqrt(2)+0.0001;
+
             if (CancellationToken.IsCancellationRequested) return;
 
             // make mesh to voxel thing
             MeshToPoints meshToPoints = new MeshToPoints(mesh, settings.Delta, settings.delta);
             meshToPoints.FillBoundaryValues();
             meshToPoints.FillInternalValues();
+
+            if (!(bcs is null))
+                meshToPoints.SetBCDirechlet(bcs);
 
             Voxels<int> mask = meshToPoints.voxels;
 
@@ -137,7 +146,7 @@ namespace Krill.Grasshopper
                 // compute the acceleration
                 model.UpdateForce();
                 // Lock one point for testing or something
-                model.forceVoxels.cellValues[n * n * n / 2] = Rhino.Geometry.Vector3d.Zero;
+                //model.forceVoxels.cellValues[n * n * n / 2] = Rhino.Geometry.Vector3d.Zero;
                 // Verlet integration, to update pos
                 double c = model.CalculateDampening();
                 model.UpdateDisp(c);
@@ -170,8 +179,13 @@ namespace Krill.Grasshopper
             DA.GetData(0, ref mesh);
             this.mesh = mesh;
 
+            Mesh mesh2 = null;
+            DA.GetData(1, ref mesh2);
+            if (!(mesh2 is null))
+                this.bcs = new BoundaryCondition() { mesh = mesh2 };
+
             Param.SettingsGoo settings = null;
-            if (DA.GetData(1, ref settings))
+            if (DA.GetData(2, ref settings))
                 this.settings = settings.Value;
         }
 

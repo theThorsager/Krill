@@ -39,7 +39,7 @@ namespace Krill
             voxels = new Voxels<int>(origin, Delta, n);
         }
 
-        public void FillBoundaryValues()
+        public void FillBoundaryValues(int newvalue = 1)
         {
             double del = voxels.delta / Math.Sqrt(2);
             foreach (MeshFace face in mesh.Faces)
@@ -90,7 +90,7 @@ namespace Krill
 
                 // change this to be not be in a separate loop later
                 foreach (Point3d pt in pts) 
-                    voxels.cellValues[voxels.PointToIndex(pt)] = 1;
+                    voxels.cellValues[voxels.PointToIndex(pt)] = newvalue;
 
                 if (face.IsQuad && isfirst)
                 {
@@ -100,6 +100,15 @@ namespace Krill
                 }
             }
         }
+
+        public void SetBCDirechlet(BoundaryCondition bc)
+        {
+            Mesh temp = mesh;
+            mesh = bc.mesh;
+            FillBoundaryValues(3);
+            mesh = temp;
+        }
+
 
         public void FillInternalValues()
         {
