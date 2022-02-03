@@ -55,16 +55,19 @@ namespace Krill.Grasshopper
 
             if (!(mesh is null))
             {
-                MeshToPoints meshToPoints = new MeshToPoints(mesh, 0.5);
+                MeshToPoints meshToPoints = new MeshToPoints(mesh, 0.5, 3.0);
 
                 meshToPoints.FillBoundaryValues();
 
                 meshToPoints.FillInternalValues();
                 watch.Start();
-
-                DA.SetDataList(0, meshToPoints.GetPointsAt(1));
-                DA.SetDataList(1, meshToPoints.GetPointsAt(2));
-                DA.SetDataList(2, meshToPoints.GetPointsAt(0));
+                conduit = new VoxelConduit();
+                conduit.mask = meshToPoints.voxels;
+                conduit.Enabled = true;
+                conduit.Update();
+                //DA.SetDataList(0, meshToPoints.voxels.GetPointsAt(1));
+                //DA.SetDataList(1, meshToPoints.voxels.GetPointsAt(2));
+                //DA.SetDataList(2, meshToPoints.voxels.GetPointsAt(0));
                 //DA.SetDataList(1, meshToPoints.points);
                 watch.Stop();
 
@@ -73,6 +76,8 @@ namespace Krill.Grasshopper
 
             }
         }
+
+        VoxelConduit conduit;
 
         /// <summary>
         /// Provides an Icon for every component that will be visible in the User Interface.
