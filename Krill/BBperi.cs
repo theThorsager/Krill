@@ -147,7 +147,7 @@ namespace Krill
                                 CalcPartialDensity(I, J, delta);
                         }
 
-                        densities.cellValues[I] *= 1; // 1/4;
+                        densities.cellValues[I] *= 2; // 1/4;
                     }
                 }
             }
@@ -156,19 +156,14 @@ namespace Krill
         void CalcPartialDensity(int i, int j, double delta)
         {
             Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
-
-            double d = 9 / (4 * Math.PI * delta * delta * delta * delta);
-            double a = bond_stiffness * 10; // Helt Dumt
-
-            Vector3d temp = xi_vec * 4 * delta / xi_vec.SquareLength;
+            double l = xi_vec.Length;
             
-            temp.X = temp.X > 0 ? temp.X : -temp.X;
-            temp.Y = temp.Y > 0 ? temp.Y : -temp.Y;
-            temp.Z = temp.Z > 0 ? temp.Z : -temp.Z;
+            xi_vec.X *= xi_vec.X;
+            xi_vec.Y *= xi_vec.Y;
+            xi_vec.Z *= xi_vec.Z;
+            xi_vec *= bond_stiffness * vol / (l*l*l);
 
-            densities.cellValues[i] += temp * 0.5 * a * d * d * delta / xi_vec.Length * 2 * vol;
-            densities.cellValues[i] += new Vector3d(0,0,temp.Z);
-
+            densities.cellValues[i] += xi_vec;
         }
 
         void CalcBondForce(int i, int j)
