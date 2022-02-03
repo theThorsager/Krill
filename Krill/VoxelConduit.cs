@@ -23,8 +23,10 @@ namespace Krill
         public void SetDisplacments(Voxels<Vector3d> disp)
         {
             points = Voxels<bool>.GetPoints(mask, disp);
+            box = new BoundingBox(points); 
         }
         public List<Point3d> points { get; set; } = null;
+        public BoundingBox box { get; set; } = BoundingBox.Empty;
 
         public VoxelConduit() : base()
         { }
@@ -34,9 +36,19 @@ namespace Krill
             if (mask is null)
                 return;
 
-            e.BoundingBox.Union(mask.origin);
-            double d = mask.n * mask.delta;
-            e.BoundingBox.Union(mask.origin + new Vector3d(d,d,d));
+            if (points is null)
+                return;
+
+            if (box.IsValid)
+            {
+                e.BoundingBox.Union(box);
+            }
+            else
+            {
+                e.BoundingBox.Union(mask.origin);
+                double d = mask.n * mask.delta;
+                e.BoundingBox.Union(mask.origin + new Vector3d(d, d, d));
+            }
         }
 
         protected override void PreDrawObjects(DrawEventArgs e)

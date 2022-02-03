@@ -27,13 +27,27 @@ namespace Krill.Grasshopper
             base.RemovedFromDocument(document);
         }
 
+        public override bool Locked { get => base.Locked; 
+            set 
+            {
+                
+                if (value)
+                    this.RequestCancellation();
+                base.Locked = value; 
+            } 
+        }
+
+
+        
+
         /// <summary>
         /// Registers all the input parameters for this component.
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddMeshParameter("mesh", "m", "", GH_ParamAccess.item);
-            //pManager.AddParameter(null, )
+            pManager.AddParameter(new Param.SettingsParam());
+            pManager[1].Optional = true;
         }
 
         /// <summary>
@@ -155,6 +169,10 @@ namespace Krill.Grasshopper
             Mesh mesh = null;
             DA.GetData(0, ref mesh);
             this.mesh = mesh;
+
+            Param.SettingsGoo settings = null;
+            if (DA.GetData(1, ref settings))
+                this.settings = settings.Value;
         }
 
         public override void SetData(IGH_DataAccess DA)
