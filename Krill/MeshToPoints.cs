@@ -16,7 +16,7 @@ namespace Krill
 
         public List<Point3d> points = new List<Point3d> ();     // For debugging, remove
 
-        public MeshToPoints(Mesh mesh, double delta)
+        public MeshToPoints(Mesh mesh, double Delta, double delta)
         {
             this.mesh = mesh;
             
@@ -27,11 +27,16 @@ namespace Krill
 
             BoundingBox bbox = mesh.GetBoundingBox(true);
 
-            int n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate + 6 * delta) / delta);
-            Point3d origin = bbox.Min - new Vector3d(3 * delta, 3 * delta, 3 * delta);
+            int nPadding = (int)Math.Floor(delta);
 
-            voxels = new Voxels<int>(origin, delta, n);
+            int n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate) / Delta + 0.002);
+            n += nPadding * 2;
+            Point3d origin = bbox.Min - new Vector3d(
+                (nPadding + 0.001) * Delta, 
+                (nPadding + 0.001) * Delta, 
+                (nPadding + 0.001) * Delta);
 
+            voxels = new Voxels<int>(origin, Delta, n);
         }
 
         public void FillBoundaryValues()

@@ -97,7 +97,7 @@ namespace Krill.Grasshopper
             if (CancellationToken.IsCancellationRequested) return;
 
             // make mesh to voxel thing
-            MeshToPoints meshToPoints = new MeshToPoints(mesh, settings.Delta);
+            MeshToPoints meshToPoints = new MeshToPoints(mesh, settings.Delta, settings.delta);
             meshToPoints.FillBoundaryValues();
             meshToPoints.FillInternalValues();
 
@@ -108,7 +108,8 @@ namespace Krill.Grasshopper
 
             // Construct the BBperi model to allocate data
             BBperi model = new BBperi(mask, settings.bond_stiffness, neighOff, 
-                settings.volume);
+                settings.volume,
+                settings.delta);
 
             conduit.mask = mask;
 

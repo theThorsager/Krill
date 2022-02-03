@@ -13,6 +13,7 @@ namespace Krill
         public Voxels<int> startVoxels;
         public int[] nlist;    // Neighbour list
         public double vol;   // Volume of the particles (same for all)
+        public int padding;
 
         public Voxels<Vector3d> forceVoxels;
         public Voxels<Vector3d> oldforceVoxels;
@@ -24,12 +25,13 @@ namespace Krill
         private int noVoxels;
 
         public BBperi(Voxels<int> orgVoxels, double Bond_stiffness, int[] neighbour_list,
-            double volume)
+            double volume, double delta)
         {
             startVoxels = orgVoxels;
             bond_stiffness = Bond_stiffness;
             nlist = neighbour_list;
             vol = volume;
+            this.padding = (int)Math.Floor(delta);
 
             noVoxels = startVoxels.n;
             forceVoxels = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
@@ -43,67 +45,78 @@ namespace Krill
 
         public void UpdateForce()
         {
-            int noBonds = nlist.Length;
+            int nBonds = nlist.Length;
 
             // Assuming the bonds never break, otherwise need a new if-statement
-            for (int i = 0; i < noVoxels*noVoxels*noVoxels; i++)
+
+            for (int i = padding; i < noVoxels - padding; i++)
             {
-                if (startVoxels.cellValues[i] == 0)
+                for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    continue;
-                }
-
-                oldforceVoxels.cellValues[i] = forceVoxels.cellValues[i];
-                forceVoxels.cellValues[i] = Vector3d.Zero;
-
-                for (int a = 0; a < noBonds; a++)
-                {
-
-                    int j = i + nlist[a];
-
-                    if (startVoxels.cellValues[j] != 0)
+                    for (int k = padding; k < noVoxels - padding; k++)
                     {
-                        CalcBondForce(i, j);
-                    }
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if (startVoxels.cellValues[I] == 0)
+                            continue;
 
-                    j = i - nlist[a];
-                    if (startVoxels.cellValues[j] != 0)
-                    {
-                        CalcBondForce(i, j);
+                        updateForce(I, nBonds);
                     }
-
                 }
-
-                forceVoxels.cellValues[i] += Vector3d.ZAxis;
-
             }
+        }
+
+        private void updateForce(int i, int nBonds)
+        {
+            oldforceVoxels.cellValues[i] = forceVoxels.cellValues[i];
+            forceVoxels.cellValues[i] = Vector3d.Zero;
+
+            for (int a = 0; a < nBonds; a++)
+            {
+                int j = i + nlist[a];
+
+                if (startVoxels.cellValues[j] != 0)
+                    CalcBondForce(i, j);
+
+                j = i - nlist[a];
+                if (startVoxels.cellValues[j] != 0)
+                    CalcBondForce(i, j);
+            }
+
+            // Temporary
+            forceVoxels.cellValues[i] += Vector3d.ZAxis;
         }
 
         public double CalculateDampening()
         {
             double denominator = 0;
-            double nominator = 0; 
+            double nominator = 0;
 
-            // Assuming the bonds never break, otherwise need a new if-statement
-            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+            for (int i = padding; i < noVoxels - padding; i++)
             {
-                if (startVoxels.cellValues[i] == 0)
-                    continue;
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int k = padding; k < noVoxels - padding; k++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if (startVoxels.cellValues[I] == 0)
+                            continue;
 
-                Vector3d K = - (forceVoxels.cellValues[i] - oldforceVoxels.cellValues[i]);
+                        Vector3d K = -(forceVoxels.cellValues[I] - oldforceVoxels.cellValues[I]);
 
-                K.X /= Utility.NotZero(velVoxels.cellValues[i].X * densities.cellValues[i].X);
-                K.Y /= Utility.NotZero(velVoxels.cellValues[i].Y * densities.cellValues[i].Y);
-                K.Z /= Utility.NotZero(velVoxels.cellValues[i].Z * densities.cellValues[i].Z);
+                        K.X /= Utility.NotZero(velVoxels.cellValues[I].X * densities.cellValues[I].X);
+                        K.Y /= Utility.NotZero(velVoxels.cellValues[I].Y * densities.cellValues[I].Y);
+                        K.Z /= Utility.NotZero(velVoxels.cellValues[I].Z * densities.cellValues[I].Z);
 
-                Vector3d disp = dispVoxels.cellValues[i];
+                        Vector3d disp = dispVoxels.cellValues[I];
 
-                nominator += disp.X * disp.X * Math.Abs(K.X) + disp.Y * disp.Y * Math.Abs(K.Y) + disp.Z * disp.Z * Math.Abs(K.Z);
-                denominator += disp * disp;
+                        nominator += disp.X * disp.X * Math.Abs(K.X) + disp.Y * disp.Y * Math.Abs(K.Y) + disp.Z * disp.Z * Math.Abs(K.Z);
+                        denominator += disp * disp;
+                    }
+                }
             }
             denominator = Utility.NotZero(denominator);
             nominator = nominator > 0 ? nominator : -nominator;
-            double c = 2 * Math.Sqrt(nominator / denominator);
+            double c = 2.0 * Math.Sqrt(nominator / denominator);
 
             return c;
         }
@@ -112,25 +125,31 @@ namespace Krill
         {
             int noBonds = nlist.Length;
 
-            // Assuming the bonds never break, otherwise need a new if-statement
-            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+            for (int i = padding; i < noVoxels - padding; i++)
             {
-                if (startVoxels.cellValues[i] == 0)
-                    continue;
-
-                for (int a = 0; a < noBonds; a++)
+                for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    int j = i + nlist[a];
+                    for (int k = padding; k < noVoxels - padding; k++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if (startVoxels.cellValues[I] == 0)
+                            continue;
 
-                    if (startVoxels.cellValues[j] != 0)
-                        CalcPartialDensity(i, j, delta);
+                        for (int a = 0; a < noBonds; a++)
+                        {
+                            int J = I + nlist[a];
 
-                    j = i - nlist[a];
-                    if (startVoxels.cellValues[j] != 0)
-                        CalcPartialDensity(i, j, delta);
+                            if (startVoxels.cellValues[J] != 0)
+                                CalcPartialDensity(I, J, delta);
+
+                            J = I - nlist[a];
+                            if (startVoxels.cellValues[J] != 0)
+                                CalcPartialDensity(I, J, delta);
+                        }
+
+                        densities.cellValues[I] *= 1; // 1/4;
+                    }
                 }
-
-                densities.cellValues[i] *= 1; // 1/4;
             }
         }
 
@@ -171,28 +190,36 @@ namespace Krill
         {
             // Based on velocity_verlet from Peripy
 
-            for (int i = 0; i < noVoxels*noVoxels*noVoxels; i++)
+            for (int i = padding; i < noVoxels - padding; i++)
             {
-                if (startVoxels.cellValues[i] == 0)
+                for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    continue;
+                    for (int k = padding; k < noVoxels - padding; k++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if (startVoxels.cellValues[I] == 0)
+                            continue;
+
+                        //velVoxels.cellValues[I] *= (1 - c);
+
+                        Vector3d velHalf = velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[i];
+
+                        accVoxels.cellValues[I] = forceVoxels.cellValues[I];
+
+                        accVoxels.cellValues[I].X /= densities.cellValues[I].X;
+                        accVoxels.cellValues[I].Y /= densities.cellValues[I].Y;
+                        accVoxels.cellValues[I].Z /= densities.cellValues[I].Z;
+
+                        accVoxels.cellValues[I] -= c * velHalf;
+
+                        velVoxels.cellValues[I] = velHalf + 0.5 * accVoxels.cellValues[I];
+
+                        dispVoxels.cellValues[I] = dispVoxels.cellValues[I] + (velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I]);
+
+                    }
+
                 }
-                velVoxels.cellValues[i] *= (1-c);
-
-                Vector3d velHalf = velVoxels.cellValues[i] + 0.5*accVoxels.cellValues[i];
-
-                accVoxels.cellValues[i] = forceVoxels.cellValues[i]; // - c * velHalf;
-
-                accVoxels.cellValues[i].X /= densities.cellValues[i].X;
-                accVoxels.cellValues[i].Y /= densities.cellValues[i].Y;
-                accVoxels.cellValues[i].Z /= densities.cellValues[i].Z;
-
-                velVoxels.cellValues[i] = velHalf + 0.5*accVoxels.cellValues[i];
-
-                dispVoxels.cellValues[i] = dispVoxels.cellValues[i] + (velVoxels.cellValues[i] + 0.5 * accVoxels.cellValues[i]);
-
             }
-
         }
 
 

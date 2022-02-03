@@ -68,7 +68,7 @@ namespace Krill
         public Point3d IndexToPoint(int i)
         {
             To3DIndex(ref i, out int j, out int k);
-            return new Point3d(origin.X + delta * i, origin.Y + delta * j, origin.Z + delta * k);
+            return new Point3d(origin.X + delta * (i + 0.5), origin.Y + delta * (j + 0.5), origin.Z + delta * (k + 0.5));
         }
 
         public int PointToIndex(Point3d pt)
