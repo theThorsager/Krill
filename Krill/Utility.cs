@@ -45,5 +45,11 @@ namespace Krill
             return result.Where(x => x > 0).ToHashSet().ToArray();
         }
 
+        const double tol = 1e-6;
+        public static double NotZero(double val)
+        {
+            return val < tol ? val > -tol ? tol : val : val;
+        }
+
     }
 }

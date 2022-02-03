@@ -92,19 +92,20 @@ namespace Krill
 
                 Vector3d K = - (forceVoxels.cellValues[i] - oldforceVoxels.cellValues[i]);
 
-                K.X /= (velVoxels.cellValues[i].X * densities.cellValues[i].X);
-                K.Y /= (velVoxels.cellValues[i].Y * densities.cellValues[i].Y);
-                K.Z /= (velVoxels.cellValues[i].Z * densities.cellValues[i].Z);
+                K.X /= Utility.NotZero(velVoxels.cellValues[i].X * densities.cellValues[i].X);
+                K.Y /= Utility.NotZero(velVoxels.cellValues[i].Y * densities.cellValues[i].Y);
+                K.Z /= Utility.NotZero(velVoxels.cellValues[i].Z * densities.cellValues[i].Z);
 
                 Vector3d disp = dispVoxels.cellValues[i];
 
                 nominator += disp.X * disp.X * Math.Abs(K.X) + disp.Y * disp.Y * Math.Abs(K.Y) + disp.Z * disp.Z * Math.Abs(K.Z);
                 denominator += disp * disp;
             }
-
+            denominator = Utility.NotZero(denominator);
+            nominator = nominator > 0 ? nominator : -nominator;
             double c = 2 * Math.Sqrt(nominator / denominator);
 
-            return Double.IsNaN(c) ? 0.5 : c;
+            return c;
         }
 
         public void SetDensities(double delta)
@@ -142,9 +143,9 @@ namespace Krill
 
             Vector3d temp = xi_vec * 4 * delta / xi_vec.SquareLength;
             
-            temp.X = temp.X > 0 ? xi_vec.X : -temp.X;
-            temp.Y = temp.Y > 0 ? xi_vec.Y : -temp.Y;
-            temp.Z = temp.Z > 0 ? xi_vec.Z : -temp.Z;
+            temp.X = temp.X > 0 ? temp.X : -temp.X;
+            temp.Y = temp.Y > 0 ? temp.Y : -temp.Y;
+            temp.Z = temp.Z > 0 ? temp.Z : -temp.Z;
 
             densities.cellValues[i] += temp * 0.5 * a * d * d * delta / xi_vec.Length * 2 * vol;
             densities.cellValues[i] += new Vector3d(0,0,temp.Z);
