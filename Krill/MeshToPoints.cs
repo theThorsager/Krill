@@ -119,7 +119,7 @@ namespace Krill
                 if (voxels.cellValues[index] != val)
                     continue;
 
-                if (mesh.IsPointInside(voxels.IndexToPoint(index) + new Vector3d(voxels.delta / 2, voxels.delta / 2, voxels.delta / 2), 1e-3, true) != inside)
+                if (mesh.IsPointInside(voxels.IndexToPoint(index), 1e-3, true) != inside)
                 {
                     index++;
                     for (; index < voxels.cellValues.Length; index++)
