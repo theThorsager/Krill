@@ -31,7 +31,7 @@ namespace Krill
             bond_stiffness = Bond_stiffness;
             nlist = neighbour_list;
             vol = volume;
-            this.padding = (int)Math.Floor(delta);
+            this.padding = 0; // (int)Math.Floor(delta);
 
             noVoxels = startVoxels.n;
             forceVoxels = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
@@ -56,32 +56,16 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if (startVoxels.cellValues[I] == 0)
+                        if ((startVoxels.cellValues[I] & 3) == 0)
                             continue;
 
                         updateForce(I, nBonds);
 
-                        if (startVoxels.cellValues[I] == 3)
-                            applyDirechlet(I, nBonds);
                     }
                 }
             }
         }
 
-        private void applyDirechlet(int i, int nBonds)
-        {
-            for (int a = 0; a < nBonds; a++)
-            {
-                int j = i + nlist[a];
-
-                if (startVoxels.cellValues[j] == 0)
-                    CalcBondForce(i, j);
-
-                j = i - nlist[a];
-                if (startVoxels.cellValues[j] == 0)
-                    CalcBondForce(i, j);
-            }
-        }
 
         private void updateForce(int i, int nBonds)
         {
@@ -101,7 +85,8 @@ namespace Krill
             }
 
             // Temporary
-            forceVoxels.cellValues[i] += Vector3d.ZAxis;
+            if (startVoxels.cellValues[i] == 3)
+                forceVoxels.cellValues[i] += Vector3d.ZAxis;
         }
 
         public double CalculateDampening()
@@ -116,7 +101,7 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if (startVoxels.cellValues[I] == 0)
+                        if ((startVoxels.cellValues[I] & 3) == 0)
                             continue;
 
                         Vector3d K = -(forceVoxels.cellValues[I] - oldforceVoxels.cellValues[I]);
@@ -150,7 +135,7 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if (startVoxels.cellValues[I] == 0)
+                        if ((startVoxels.cellValues[I] & 3) == 0)
                             continue;
 
                         for (int a = 0; a < noBonds; a++)
@@ -210,10 +195,8 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if (startVoxels.cellValues[I] == 0)
+                        if ((startVoxels.cellValues[I] & 3) == 0)
                             continue;
-
-                        //velVoxels.cellValues[I] *= (1 - c);
 
                         Vector3d velHalf = velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[i];
 
@@ -230,7 +213,6 @@ namespace Krill
                         dispVoxels.cellValues[I] = dispVoxels.cellValues[I] + (velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I]);
 
                     }
-
                 }
             }
         }

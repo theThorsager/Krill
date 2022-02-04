@@ -86,7 +86,7 @@ namespace Krill
                     pts.Add(pt);
                 }
 
-                points.AddRange(pts);
+                //points.AddRange(pts);
 
                 // change this to be not be in a separate loop later
                 foreach (Point3d pt in pts) 
@@ -101,11 +101,99 @@ namespace Krill
             }
         }
 
-        public void SetBCDirechlet(BoundaryCondition bc)
+        public void FillBoundaryValuesBC(int newvalue, double delta)
+        {
+            double del = voxels.delta / Math.Sqrt(2);
+            foreach (MeshFace face in mesh.Faces)
+            {
+                var indecies = new HashSet<int>();
+                bool isfirst = true;
+                Point3d a = mesh.Vertices[face.A];
+                Point3d b = mesh.Vertices[face.B];
+                Point3d c = mesh.Vertices[face.C];
+
+            Begining:
+                Vector3d ab = b - a;
+                Vector3d ac = c - a;
+                Vector3d bc = c - b;
+
+                List<Point3d> pts = new List<Point3d>();
+
+                double cos = ab * ac / (ab.Length * ac.Length);
+                Vector3d dirC = ac * del / ac.Length;
+                Vector3d dirB = (ab / ab.Length) * del / Math.Sqrt(1 - cos * cos); // Makes the length orthogonal to dirC = delta
+                double length = ab.Length / dirB.Length;
+                double reduction = length / (ac.Length / del);
+                for (int j = 0; j < ac.Length / del; j++)
+                {
+                    Point3d pt = a + dirC * j;
+                    for (int i = 0; i < length; i++)
+                    {
+                        pts.Add(pt);
+                        pt += dirB;
+                    }
+                    length -= reduction;
+                }
+
+                // Specific fill for the other edges
+                dirB = ab * del / ab.Length;
+                for (int i = 0; i < ab.Length / del; i++)
+                {
+                    Point3d pt = b - dirB * i;
+                    pts.Add(pt);
+                }
+                Vector3d dirBC = bc * del / bc.Length;
+                for (int i = 0; i < bc.Length / del; i++)
+                {
+                    Point3d pt = c - dirBC * i;
+                    pts.Add(pt);
+                }
+
+                //points.AddRange(pts);
+
+                foreach (Point3d pt in pts)
+                    indecies.Add(voxels.PointToIndex(pt));
+
+                if (face.IsQuad && isfirst)
+                {
+                    isfirst = false;
+                    b = mesh.Vertices[face.D];
+                    goto Begining;
+                }
+
+                pts.Clear();
+
+                b = mesh.Vertices[face.B];
+                var normal = Vector3d.CrossProduct(b - a, ac);
+                normal /= normal.Length;
+                normal *= del;
+                foreach (int i in indecies)
+                {
+                    Point3d p = voxels.IndexToPoint(i);
+                    for (int j = 1; j < voxels.delta * delta / del; j++)
+                    {
+                        pts.Add(p + normal * j);
+                    }
+                }
+                points.AddRange(pts);
+
+                // change this to be not be in a separate loop later
+                foreach (Point3d pt in pts)
+                {
+                    int i = voxels.PointToIndex(pt);
+                    if (voxels.cellValues[i] == 0)
+                        voxels.cellValues[i] = newvalue;
+
+                }
+            }
+        }
+
+        public void SetBC(BoundaryCondition bc, double delta, int val)
         {
             Mesh temp = mesh;
             mesh = bc.mesh;
-            FillBoundaryValues(3);
+            FillBoundaryValuesBC(val, delta);
+
             mesh = temp;
         }
 

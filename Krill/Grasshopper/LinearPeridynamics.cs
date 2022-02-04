@@ -46,10 +46,12 @@ namespace Krill.Grasshopper
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddMeshParameter("mesh", "m", "", GH_ParamAccess.item);
-            pManager.AddMeshParameter("bc", "m", "", GH_ParamAccess.item);
-            pManager[1].Optional = true;
-            pManager.AddParameter(new Param.SettingsParam());
+            pManager.AddMeshParameter("bcD", "bcD", "", GH_ParamAccess.item);
+            pManager[1].Optional = true; 
+            pManager.AddMeshParameter("bcN", "bcN", "", GH_ParamAccess.item);
             pManager[2].Optional = true;
+            pManager.AddParameter(new Param.SettingsParam());
+            pManager[3].Optional = true;
         }
 
         /// <summary>
@@ -93,7 +95,8 @@ namespace Krill.Grasshopper
     class LinearPeridynamicsWorker : WorkerInstance
     {
         Mesh mesh { get; set; } = null;
-        BoundaryCondition bcs { get; set; } = null;
+        BoundaryCondition bcsD { get; set; } = null;
+        BoundaryCondition bcsN { get; set; } = null;
         Settings settings { get; set; } = null;
         VoxelConduit conduit { get; set; }
         public LinearPeridynamicsWorker(VoxelConduit vcon) : base(null)
@@ -112,8 +115,10 @@ namespace Krill.Grasshopper
                 settings = new Settings();
 
             if (settings.delta <= Math.Sqrt(2))
-                settings.delta = Math.Sqrt(2)+0.0001;
-
+            {
+                this.Parent.AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "delta is clamped to sqrt(2)");
+                settings.delta = Math.Sqrt(2) + 0.0001;
+            }
             if (CancellationToken.IsCancellationRequested) return;
 
             // make mesh to voxel thing
@@ -121,8 +126,11 @@ namespace Krill.Grasshopper
             meshToPoints.FillBoundaryValues();
             meshToPoints.FillInternalValues();
 
-            if (!(bcs is null))
-                meshToPoints.SetBCDirechlet(bcs);
+            if (!(bcsD is null))
+                meshToPoints.SetBC(bcsD, settings.delta, 8);
+
+            if (!(bcsN is null))
+                meshToPoints.SetBC(bcsN, settings.delta, 3);
 
             Voxels<int> mask = meshToPoints.voxels;
 
@@ -182,10 +190,15 @@ namespace Krill.Grasshopper
             Mesh mesh2 = null;
             DA.GetData(1, ref mesh2);
             if (!(mesh2 is null))
-                this.bcs = new BoundaryCondition() { mesh = mesh2 };
+                this.bcsD = new BoundaryCondition() { mesh = mesh2 };
+
+            Mesh mesh3 = null;
+            DA.GetData(2, ref mesh3);
+            if (!(mesh3 is null))
+                this.bcsN = new BoundaryCondition() { mesh = mesh3 };
 
             Param.SettingsGoo settings = null;
-            if (DA.GetData(2, ref settings))
+            if (DA.GetData(3, ref settings))
                 this.settings = settings.Value;
         }
 

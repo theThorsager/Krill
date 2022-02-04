@@ -29,6 +29,8 @@ namespace Krill.Grasshopper
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddMeshParameter("mesh", "mesh", "", GH_ParamAccess.item);
+            pManager.AddMeshParameter("bc", "m", "", GH_ParamAccess.item);
+            pManager[1].Optional = true;
 
         }
 
@@ -51,24 +53,34 @@ namespace Krill.Grasshopper
         {
             Mesh mesh = null;
             DA.GetData(0, ref mesh);
+            Mesh mesh2 = null;
+            DA.GetData(1, ref mesh2);
             Stopwatch watch = new Stopwatch();
+
+            BoundaryCondition bcs = null;
+            if (mesh2 != null)
+                bcs = new BoundaryCondition() { mesh = mesh2 };
 
             if (!(mesh is null))
             {
-                MeshToPoints meshToPoints = new MeshToPoints(mesh, 0.5, 3.0);
+                MeshToPoints meshToPoints = new MeshToPoints(mesh, 0.5, 3.01);
 
                 meshToPoints.FillBoundaryValues();
 
                 meshToPoints.FillInternalValues();
+
+                if (!(bcs is null))
+                    meshToPoints.SetBC(bcs, 3.01, 8);
+
                 watch.Start();
                 conduit = new VoxelConduit();
                 conduit.mask = meshToPoints.voxels;
                 conduit.Enabled = true;
                 conduit.Update();
-                //DA.SetDataList(0, meshToPoints.voxels.GetPointsAt(1));
+                DA.SetDataList(0, meshToPoints.voxels.GetPointsAt(8));
                 //DA.SetDataList(1, meshToPoints.voxels.GetPointsAt(2));
                 //DA.SetDataList(2, meshToPoints.voxels.GetPointsAt(0));
-                //DA.SetDataList(1, meshToPoints.points);
+                DA.SetDataList(1, meshToPoints.points);
                 watch.Stop();
 
 
