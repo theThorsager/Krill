@@ -33,6 +33,8 @@ namespace Krill
 
         protected override void CalculateBoundingBox(CalculateBoundingBoxEventArgs e)
         {
+            base.CalculateBoundingBox(e);
+
             if (mask is null)
                 return;
 
@@ -41,7 +43,7 @@ namespace Krill
 
             if (box.IsValid)
             {
-                e.BoundingBox.Union(box);
+                e.IncludeBoundingBox(box);
             }
             else
             {
