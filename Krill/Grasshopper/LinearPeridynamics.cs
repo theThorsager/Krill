@@ -139,7 +139,7 @@ namespace Krill.Grasshopper
 
             // Construct the BBperi model to allocate data
             BBperi model = new BBperi(mask, settings.bond_stiffness, neighOff, 
-                settings.volume,
+                settings.Delta * settings.Delta * settings.Delta,
                 settings.delta);
 
             conduit.mask = mask;
