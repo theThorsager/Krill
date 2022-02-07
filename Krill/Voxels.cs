@@ -49,7 +49,7 @@ namespace Krill
             for (int i = 0; i < mask.cellValues.Length; i++)
             {
                 if (mask.cellValues[i] != 0)
-                    result.Add(disp.IndexToPoint(i) + disp.cellValues[i]);
+                    result.Add(disp.IndexToPoint(i) + 1000 * disp.cellValues[i]);
             }
             return result;
         }
