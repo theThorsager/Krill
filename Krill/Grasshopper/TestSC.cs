@@ -1,6 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
-
+using System.Diagnostics;
 using Grasshopper.Kernel;
 using GrasshopperAsyncComponent;
 using Rhino.Geometry;
@@ -59,6 +59,7 @@ namespace Krill.Grasshopper
         {
             pManager.AddPointParameter("points", "pts", "", GH_ParamAccess.list);
             pManager.AddVectorParameter("disp", "d", "", GH_ParamAccess.list);
+            pManager.AddTextParameter("results", "r", "", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -101,6 +102,7 @@ namespace Krill.Grasshopper
 
         List<Point3d> points = null;
         List<Vector3d> vectors = null;
+        string results = null;
         public TestSCWorker(VoxelConduit vcon) : base(null)
         {
             if (vcon is null)
@@ -126,6 +128,10 @@ namespace Krill.Grasshopper
             }
             if (CancellationToken.IsCancellationRequested) return;
 
+            Stopwatch watchsetup = new Stopwatch();
+            Stopwatch watchloop = new Stopwatch();
+
+            watchsetup.Start();
             // make mesh to voxel thing
             MeshToPoints meshToPoints = new MeshToPoints(mesh, settings.Delta, settings.delta);
             meshToPoints.FillBoundaryValues();
@@ -141,6 +147,8 @@ namespace Krill.Grasshopper
                 settings.Delta * settings.Delta * settings.Delta,
                 settings.delta);
 
+            watchsetup.Stop();
+
             Utility.SetValuesOutsideBBox(
                 model.startVoxels, 
                 model.dispVoxels, 
@@ -148,12 +156,14 @@ namespace Krill.Grasshopper
                 0x00000100, // mask
                 x => AnalyticalSolutions.SphericalCavity(x, a, sigma, settings.E, 0.25));
 
+            watchsetup.Start();
             conduit.mask = mask;
 
             int n = mask.n;
 
             model.SetDensities(settings.delta*settings.Delta);
-
+            watchsetup.Stop();
+            watchloop.Start();
             double residual_scale = 1;
             // Make a looop
             for (int i = 0; i < settings.n_timesteps; i++)
@@ -185,13 +195,23 @@ namespace Krill.Grasshopper
                 if (residual < tolerance)
                     break;
             }
-
+            watchloop.Stop();
             // Display data
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
 
             points = Voxels<bool>.GetPoints(model.startVoxels, model.dispVoxels, 0, 0x000000FF);
             vectors = model.dispVoxels.GetValues(model.startVoxels, 0x000000FF);
+
+            int power = 2; /* the 2 norm */
+            double errornorm = Utility.ErrorNorm(points, vectors, a, power , 
+                x => AnalyticalSolutions.SphericalCavity(x, a, sigma, settings.E, 0.25));
+
+            results = $"Spherical Cavity test: \n" +
+                $"  Input values: a = {a}, Delta = {settings.Delta}, delta = {settings.delta} \n" +
+                $"  Error in the {power} norm: {errornorm}\n" +
+                $"  Time to setup: {watchsetup.ElapsedMilliseconds}ms\n" +
+                $"  Time for the main loop: {watchloop.ElapsedMilliseconds}ms\n";
 
             Done();
         }
@@ -219,6 +239,9 @@ namespace Krill.Grasshopper
 
             if (!(vectors is null))
                 DA.SetDataList(1, vectors);
+
+            if (!(results is null))
+                DA.SetData(2, results);
 
             if (CancellationToken.IsCancellationRequested)
                 return;

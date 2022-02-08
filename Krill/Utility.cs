@@ -69,5 +69,26 @@ namespace Krill
                 }
             }
         }
+
+        public static double ErrorNorm(
+            List<Point3d> pts, 
+            List<Vector3d> disp, 
+            double lengthScale, 
+            int power, 
+            Func<Point3d, Vector3d> func)
+        {
+            List<Vector3d> trueDisp = pts.Select(x => func(x)).ToList();
+
+            double n = 1 / pts.Count;
+            var res = disp.Zip(trueDisp, 
+                (x, y) =>
+                {
+                    if (!y.IsValid)
+                        return 0;
+                    return Math.Pow((x - y).Length / lengthScale, power) * n;
+                }).Sum();
+
+            return Math.Pow(res, 1.0 / (double)power);
+        }
     }
 }
