@@ -137,7 +137,7 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if ((startVoxels.cellValues[I] & 3) == 0)
+                        if ((startVoxels.cellValues[I] & maskbit) == 0)
                             continue;
 
                         for (int a = 0; a < noBonds; a++)
