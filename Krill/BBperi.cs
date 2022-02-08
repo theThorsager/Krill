@@ -219,6 +219,41 @@ namespace Krill
             }
         }
 
+        public double ComputeResidual()
+        {
+            // residual of our equations
+            double R = forceVoxels.cellValues.Sum(x =>
+            {
+                double res = x.X > 0 ? x.X : -x.X;
+                res += x.Y > 0 ? x.Y : -x.Y;
+                res += x.Z > 0 ? x.Z : -x.Z;
+                return res;
+            }
+            );
+
+            // number of relevant points
+            int n = 0;
+
+            // scale with "force" in the system
+            // Average displacement * stiffness ? :)
+            double F = 0;
+            for (int i = 0; i < noVoxels*noVoxels*noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                F += dispVoxels.cellValues[i].Length;
+                ++n;
+            }
+            F *= bond_stiffness / n;
+            
+            F = Math.Max(1, F);
+
+            // average residual per point
+            R /= (double)n;
+
+            return R / F;
+        }
 
     }
 }

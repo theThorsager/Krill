@@ -111,6 +111,9 @@ namespace Krill.Grasshopper
 
         public override void DoWork(Action<string, double> ReportProgress, Action Done)
         {
+            double tolerance = 1e-6;
+            double logtol = Math.Log(tolerance);
+
             if (settings is null)
                 settings = new Settings();
 
@@ -148,6 +151,7 @@ namespace Krill.Grasshopper
 
             model.SetDensities(settings.delta*settings.Delta);
 
+            double residual_scale = 1;
             // Make a looop
             for (int i = 0; i < settings.n_timesteps; i++)
             {
@@ -159,17 +163,25 @@ namespace Krill.Grasshopper
                 double c = model.CalculateDampening();
                 model.UpdateDisp(c);
 
+                double residual = model.ComputeResidual();
                 if (i % 10 == 0)
                 {
                     if (CancellationToken.IsCancellationRequested) return;
 
                     conduit.SetDisplacments(model.dispVoxels);
                     conduit.Update();
-                    ReportProgress(Id, ((double)i)/settings.n_timesteps);
+                    if (i == 0)
+                    {
+                        residual_scale = Math.Log(residual);
+                        ReportProgress(Id, 0);
+                    }
+                    else
+                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol);
                 }
 
                 // Check termination criteria
-
+                if (residual < tolerance)
+                    break;
             }
 
             // Display data
