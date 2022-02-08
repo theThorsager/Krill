@@ -28,8 +28,8 @@ namespace Krill.Grasshopper.Param
             pManager.AddNumberParameter("Delta", "D", "", GH_ParamAccess.item, setting.Delta);
             pManager.AddNumberParameter("delta", "d", "", GH_ParamAccess.item, setting.delta);
             pManager.AddIntegerParameter("timesteps", "nt", "", GH_ParamAccess.item, setting.n_timesteps);
-            pManager.AddNumberParameter("bond stiffnes", "E", "", GH_ParamAccess.item, setting.bond_stiffness);
-            pManager.AddNumberParameter("Volume", "V", "", GH_ParamAccess.item, setting.volume);
+            pManager.AddNumberParameter("bond stiffnes", "c", "", GH_ParamAccess.item, setting.bond_stiffness);
+            pManager.AddNumberParameter("Youngs", "E", "", GH_ParamAccess.item, setting.E);
         }
 
         /// <summary>
@@ -50,13 +50,13 @@ namespace Krill.Grasshopper.Param
             double delta = 0;
             int n = 0;
             double stiff = 0;
-            double vol = 0;
+            double e = 0;
 
             DA.GetData(0, ref Delta);
             DA.GetData(1, ref delta);
             DA.GetData(2, ref n);
             DA.GetData(3, ref stiff);
-            DA.GetData(4, ref vol);
+            DA.GetData(4, ref e);
 
             DA.SetData(0, new SettingsGoo(new Krill.Settings() 
             { 
@@ -64,7 +64,7 @@ namespace Krill.Grasshopper.Param
                 delta = delta, 
                 bond_stiffness = stiff, 
                 n_timesteps = n, 
-                volume = vol 
+                E = e 
             }));
         }
 

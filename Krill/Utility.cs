@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Rhino.Geometry;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -51,5 +52,22 @@ namespace Krill
             return val < tol ? val > -tol ? tol : val : val;
         }
 
+        public static void SetValuesOutsideBBox(Voxels<int> mask, Voxels<Vector3d> disp, BoundingBox bbox, int val, Func<Point3d, Vector3d> func)
+        {
+            int n = mask.n;
+            for (int i = 0; i < n * n * n; i++)
+            {
+                Point3d pt = mask.IndexToPoint(i);
+                if (!bbox.Contains(pt))
+                {
+                    Vector3d u = func(pt);
+                    if (u.IsValid)
+                    {
+                        disp.cellValues[i] = u;
+                        mask.cellValues[i] = val;
+                    }
+                }
+            }
+        }
     }
 }

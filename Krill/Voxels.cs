@@ -43,17 +43,27 @@ namespace Krill
             }
             return result;
         }
-        public static List<Point3d> GetPoints(Voxels<int> mask, Voxels<Vector3d> disp)
+        public static List<Point3d> GetPoints(Voxels<int> mask, Voxels<Vector3d> disp, double factor = 10, uint maskbit = 0xFFFFFFFF)
         {
             List<Point3d> result = new List<Point3d>();
             for (int i = 0; i < mask.cellValues.Length; i++)
             {
-                if (mask.cellValues[i] != 0)
-                    result.Add(disp.IndexToPoint(i) + 1000 * disp.cellValues[i]);
+                if ((mask.cellValues[i] & maskbit) != 0)
+                    result.Add(disp.IndexToPoint(i) + factor * disp.cellValues[i]);
             }
             return result;
         }
 
+        public List<T> GetValues(Voxels<int> mask, uint maskbit = 0xFFFFFFFF)
+        {
+            List<T> result = new List<T>();
+            for (int i = 0; i < mask.cellValues.Length; i++)
+            {
+                if ((mask.cellValues[i] & maskbit) != 0)
+                    result.Add(this.cellValues[i]);
+            }
+            return result;
+        }
 
         public Point3d IndexToPoint(int i, int j, int k)
         {

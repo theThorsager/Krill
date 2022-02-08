@@ -9,6 +9,8 @@ namespace Krill
 {
     internal class BBperi
     {
+        const int maskbit = 0x000000FF;
+
         public double bond_stiffness;
         public Voxels<int> startVoxels;
         public int[] nlist;    // Neighbour list
@@ -56,7 +58,7 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if ((startVoxels.cellValues[I] & 3) == 0)
+                        if ((startVoxels.cellValues[I] & maskbit) == 0)
                             continue;
 
                         updateForce(I, nBonds);
@@ -101,7 +103,7 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if ((startVoxels.cellValues[I] & 3) == 0)
+                        if ((startVoxels.cellValues[I] & maskbit) == 0)
                             continue;
 
                         Vector3d K = -(forceVoxels.cellValues[I] - oldforceVoxels.cellValues[I]);
@@ -195,7 +197,7 @@ namespace Krill
                     for (int k = padding; k < noVoxels - padding; k++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if ((startVoxels.cellValues[I] & 3) == 0)
+                        if ((startVoxels.cellValues[I] & maskbit) == 0)
                             continue;
 
                         Vector3d velHalf = velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[i];
