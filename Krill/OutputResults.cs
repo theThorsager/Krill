@@ -9,6 +9,8 @@ namespace Krill
 {
     internal class OutputResults
     {
+        const int maskbit = 0x000000FF;
+
         public Voxels<int> startVoxels;
         public int[] nList;
 
@@ -76,12 +78,14 @@ namespace Krill
         {
             for (int i = 0; i < noVoxels; i++)
             {
-                if (startVoxels.cellValues[i] == 0)
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
 
                 Matrix F;
                 Matrix A = new Matrix(noBonds*3, 9);
+                A.Zero();
                 Matrix b = new Matrix(noBonds*3, 1);
+                b.Zero();
 
                 for (int ii = 0; ii < noBonds / 2; ii++)
                 {
@@ -92,17 +96,19 @@ namespace Krill
                         A[ii * 3 + 0, 0] = A_j[0, 0];
                         A[ii * 3 + 0, 1] = A_j[0, 1];
                         A[ii * 3 + 0, 2] = A_j[0, 2];
+
                         A[ii * 3 + 1, 3] = A_j[1, 3];
                         A[ii * 3 + 1, 4] = A_j[1, 4];
                         A[ii * 3 + 1, 5] = A_j[1, 5];
+
                         A[ii * 3 + 2, 6] = A_j[2, 6];
                         A[ii * 3 + 2, 7] = A_j[2, 7];
                         A[ii * 3 + 2, 8] = A_j[2, 8];
 
                         Matrix b_j = Calc_bj(i, j, dispVoxels);
                         b[ii * 3 + 0, 0] = b_j[0, 0];
-                        b[ii * 3 + 1, 0] = b_j[0, 0];
-                        b[ii * 3 + 2, 0] = b_j[0, 0];
+                        b[ii * 3 + 1, 0] = b_j[1, 0];
+                        b[ii * 3 + 2, 0] = b_j[2, 0];
                     }
 
                     j = i - nList[ii];
@@ -112,42 +118,44 @@ namespace Krill
                         A[noBonds / 2 * 3 + ii * 3 + 0, 0] = A_j[0, 0];
                         A[noBonds / 2 * 3 + ii * 3 + 0, 1] = A_j[0, 1];
                         A[noBonds / 2 * 3 + ii * 3 + 0, 2] = A_j[0, 2];
+
                         A[noBonds / 2 * 3 + ii * 3 + 1, 3] = A_j[1, 3];
                         A[noBonds / 2 * 3 + ii * 3 + 1, 4] = A_j[1, 4];
                         A[noBonds / 2 * 3 + ii * 3 + 1, 5] = A_j[1, 5];
+
                         A[noBonds / 2 * 3 + ii * 3 + 2, 6] = A_j[2, 6];
                         A[noBonds / 2 * 3 + ii * 3 + 2, 7] = A_j[2, 7];
                         A[noBonds / 2 * 3 + ii * 3 + 2, 8] = A_j[2, 8];
 
                         Matrix b_j = Calc_bj(i, j, dispVoxels);
                         b[noBonds / 2 * 3 + ii * 3 + 0, 0] = b_j[0, 0];
-                        b[noBonds / 2 * 3 + ii * 3 + 1, 0] = b_j[0, 0];
-                        b[noBonds / 2 * 3 + ii * 3 + 2, 0] = b_j[0, 0];
+                        b[noBonds / 2 * 3 + ii * 3 + 1, 0] = b_j[1, 0];
+                        b[noBonds / 2 * 3 + ii * 3 + 2, 0] = b_j[2, 0];
                     }
                 }
                 // F = (A'*A)^(-1)*A'*b
                 // Borde kanske introducera weightning matrix W för bättre resultat
-                Matrix AT = A;
+                Matrix AT = A.Duplicate();
                 AT.Transpose();
 
                 Matrix AA = AT * A;
                 AA.Invert(1e-6);        // For now chose an arbitrary tolerance
 
-                F = AA * AT * b;
+                F = (AA * AT) * b;
 
                 double Fxx = F[0, 0];
-                double Fxy = (F[1, 0] + F[3, 0]) / 2;
-                double Fxz = (F[2, 0] + F[6, 0]) / 2;
+                double Fxy = (F[1, 0] + F[3, 0]) * 0.5;
+                double Fxz = (F[2, 0] + F[6, 0]) * 0.5;
                 double Fyy = F[4, 0];
-                double Fyz = (F[5, 0] + F[7, 0]) / 2;
+                double Fyz = (F[5, 0] + F[7, 0]) * 0.5;
                 double Fzz = F[8, 0];
 
-                strainXX.cellValues[i] = 1 / 2 * (Fxx * Fxx + Fxy * Fxy + Fxz * Fxz - 1);
-                strainYY.cellValues[i] = 1 / 2 * (Fxy * Fxy + Fyy * Fyy + Fyz * Fyz - 1);
-                strainZZ.cellValues[i] = 1 / 2 * (Fxz * Fxz + Fyz * Fyz + Fzz * Fzz - 1);
-                strainXY.cellValues[i] = 1 / 2 * (Fxx * Fxy + Fyy * Fxy + Fyz * Fxz);
-                strainXZ.cellValues[i] = 1 / 2 * (Fxz * Fxx + Fyz * Fxy + Fzz * Fxz);
-                strainYZ.cellValues[i] = 1 / 2 * (Fxz * Fxy + Fyz * Fyy + Fzz * Fyz);
+                strainXX.cellValues[i] = 0.5 * (Fxx * Fxx + Fxy * Fxy + Fxz * Fxz - 1);
+                strainYY.cellValues[i] = 0.5 * (Fxy * Fxy + Fyy * Fyy + Fyz * Fyz - 1);
+                strainZZ.cellValues[i] = 0.5 * (Fxz * Fxz + Fyz * Fyz + Fzz * Fzz - 1);
+                strainXY.cellValues[i] = 0.5 * (Fxx * Fxy + Fyy * Fxy + Fyz * Fxz);
+                strainXZ.cellValues[i] = 0.5 * (Fxz * Fxx + Fyz * Fxy + Fzz * Fxz);
+                strainYZ.cellValues[i] = 0.5 * (Fxz * Fxy + Fyz * Fyy + Fzz * Fyz);
 
             }
         }
@@ -155,6 +163,7 @@ namespace Krill
         private Matrix Calc_Aj(int i, int j)
         {
             Matrix A_j = new Matrix(3, 9);
+            A_j.Zero();
             Vector3d xi = startVoxels.IndexToPoint(i) - startVoxels.IndexToPoint(j);
 
             A_j[0, 0] = xi.X;
@@ -175,7 +184,8 @@ namespace Krill
         private Matrix Calc_bj(int i, int j, Voxels<Vector3d> dispVoxels)
         {
             Matrix b_j = new Matrix(3, 1);
-            Vector3d eta = dispVoxels.cellValues[i] - dispVoxels.cellValues[j];
+            b_j.Zero();
+            Vector3d eta = (dispVoxels.cellValues[i] + startVoxels.IndexToPoint(i)) - (dispVoxels.cellValues[j] + startVoxels.IndexToPoint(j));
 
             b_j[0, 0] = eta.X;
             b_j[1, 0] = eta.Y;
@@ -190,7 +200,7 @@ namespace Krill
 
             for (int i = 0; i < noVoxels; i++)
             {
-                if (startVoxels.cellValues[i] == 0)
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
 
                 stressXX.cellValues[i] = C * ((1 - nu) * strainXX.cellValues[i] + nu * strainYY.cellValues[i] + nu * strainZZ.cellValues[i]);
@@ -206,7 +216,7 @@ namespace Krill
         {
             for (int i = 0; i < noVoxels; i++)
             {
-                if (startVoxels.cellValues[i] == 0)
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
                 double xx = stressXX.cellValues[i];
                 double yy = stressYY.cellValues[i];
@@ -215,14 +225,17 @@ namespace Krill
                 double xz = stressXZ.cellValues[i];
                 double yz = stressYZ.cellValues[i];
 
-                vonMises.cellValues[i] = Math.Sqrt(1/2*((xx-yy)*(xx-yy)+(yy-zz)*(yy-zz)+(zz-xx)*(zz-xx))+3*(xy*xy+xz*xz+yz*yz));
+                vonMises.cellValues[i] = Math.Sqrt(0.5*((xx-yy)*(xx-yy)+(yy-zz)*(yy-zz)+(zz-xx)*(zz-xx))+3*(xy*xy+xz*xz+yz*yz));
             }
         }
 
-        public void UpdatePrinccipalStresses()
+        public void UpdatePrincipalStresses()
         {
             for (int i = 0; i < noVoxels; i++)
             {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
                 Transform stressTensor = new Transform();
 
                 stressTensor.M00 = stressXX.cellValues[i];
@@ -237,7 +250,9 @@ namespace Krill
                 stressTensor.M21 = stressYZ.cellValues[i];
                 stressTensor.M22 = stressZZ.cellValues[i];
 
-                stressTensor.DecomposeSymmetric(out Transform EigenVectors, out Vector3d EigenValues);
+                stressTensor.M33 = 1;   // In order to make the stressTensor linear
+
+                bool test = stressTensor.DecomposeSymmetric(out Transform EigenVectors, out Vector3d EigenValues);
 
                 princpStress.cellValues[i] = EigenValues;
 
@@ -249,7 +264,6 @@ namespace Krill
                     vecList[j].Y = EigenVectors[1, j];
                     vecList[j].Z = EigenVectors[2, j];
                 }
-
                 princpDir.cellValues[i] = vecList;               
 
             }
