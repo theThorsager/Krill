@@ -229,7 +229,7 @@ namespace Krill
             }
         }
 
-        public void UpdatePrinccipalStresses()
+        public void UpdatePrincipalStresses()
         {
             for (int i = 0; i < noVoxels; i++)
             {
