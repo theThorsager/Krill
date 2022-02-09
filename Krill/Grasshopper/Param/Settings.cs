@@ -28,7 +28,6 @@ namespace Krill.Grasshopper.Param
             pManager.AddNumberParameter("Delta", "D", "", GH_ParamAccess.item, setting.Delta);
             pManager.AddNumberParameter("delta", "d", "", GH_ParamAccess.item, setting.delta);
             pManager.AddIntegerParameter("timesteps", "nt", "", GH_ParamAccess.item, setting.n_timesteps);
-            pManager.AddNumberParameter("bond stiffnes", "c", "", GH_ParamAccess.item, setting.bond_stiffness);
             pManager.AddNumberParameter("Youngs", "E", "", GH_ParamAccess.item, setting.E);
         }
 
@@ -49,22 +48,25 @@ namespace Krill.Grasshopper.Param
             double Delta = 0;
             double delta = 0;
             int n = 0;
-            double stiff = 0;
-            double e = 0;
+            double E = 0;
 
             DA.GetData(0, ref Delta);
             DA.GetData(1, ref delta);
             DA.GetData(2, ref n);
-            DA.GetData(3, ref stiff);
-            DA.GetData(4, ref e);
+            DA.GetData(3, ref E);
+
+            // E to bondstiffness, see: Peridigm User Guide
+            double d = Delta * delta;
+            double K3d = E / (3.0 * (1.0 - 2.0 * 0.25));
+            double c = 18.0 * K3d / (Math.PI * d * d * d * d);
 
             DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
             { 
                 Delta = Delta, 
                 delta = delta, 
-                bond_stiffness = stiff, 
+                bond_stiffness = c, 
                 n_timesteps = n, 
-                E = e 
+                E = E
             }));
         }
 
