@@ -6,6 +6,7 @@ using GrasshopperAsyncComponent;
 using Rhino.Geometry;
 
 using Krill.Containers;
+using System.Linq;
 
 namespace Krill.Grasshopper
 {
@@ -39,21 +40,16 @@ namespace Krill.Grasshopper
             } 
         }
 
-
-        
-
         /// <summary>
         /// Registers all the input parameters for this component.
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddMeshParameter("mesh", "m", "", GH_ParamAccess.item);
-            pManager.AddMeshParameter("bcD", "bcD", "", GH_ParamAccess.item);
+            pManager.AddParameter(new Param.BoundaryConditionParam(), "BCs", "BCs", "", GH_ParamAccess.list);
             pManager[1].Optional = true; 
-            pManager.AddMeshParameter("bcN", "bcN", "", GH_ParamAccess.item);
-            pManager[2].Optional = true;
             pManager.AddParameter(new Param.SettingsParam());
-            pManager[3].Optional = true;
+            pManager[2].Optional = true;
         }
 
         /// <summary>
@@ -98,8 +94,7 @@ namespace Krill.Grasshopper
     class LinearPeridynamicsWorker : WorkerInstance
     {
         Mesh mesh { get; set; } = null;
-        BoundaryCondition bcsD { get; set; } = null;
-        BoundaryCondition bcsN { get; set; } = null;
+        List<IBoundaryCondition> BCs { get; set; } = null;
         Settings settings { get; set; } = null;
         VoxelConduit conduit { get; set; }
 
@@ -134,11 +129,7 @@ namespace Krill.Grasshopper
             meshToPoints.FillBoundaryValues();
             meshToPoints.FillInternalValues();
 
-            if (!(bcsD is null))
-                meshToPoints.SetBC(bcsD, settings.delta, 0x00000100);
-
-            if (!(bcsN is null))
-                meshToPoints.SetBC(bcsN, settings.delta, 3);
+            
 
             Voxels<int> mask = meshToPoints.voxels;
 
@@ -149,7 +140,34 @@ namespace Krill.Grasshopper
             BBperi model = new BBperi(mask, settings.bond_stiffness, neighOff, 
                 settings.Delta * settings.Delta * settings.Delta,
                 settings.delta);
+            
 
+            var BCD = new List<BoundaryConditionDirechlet>();
+            var BCN = new List<BoundaryConditionNuemann>();
+            
+
+            foreach (IBoundaryCondition bc in BCs)
+            {
+                if (bc is BoundaryConditionDirechlet)
+                {
+                    BCD.Add(bc as BoundaryConditionDirechlet);
+                    meshToPoints.SetBC(bc, settings.delta, BCD.Count << 8);
+            
+                    model.dispVoxels.SetValues(model.startVoxels, 0xFF00, BCD.Last().displacement);
+                }
+                else if (bc is BoundaryConditionNuemann)
+                {
+                    BCN.Add(bc as BoundaryConditionNuemann);
+                    meshToPoints.SetBC(bc, settings.delta, BCN.Count << 4);
+                }
+                else
+                {
+                    // ?
+                }
+            }
+
+            model.BCD = BCD;
+            model.BCN = BCN;
             conduit.mask = mask;
 
             model.SetDensities(settings.delta*settings.Delta);
@@ -189,8 +207,15 @@ namespace Krill.Grasshopper
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
 
+            // List<BoundaryConditionNuemann> converted = ToNuemannBCs(BCs)
+            List<BoundaryConditionNuemann> nuemanns = null;
+
             solution = new Param.LinearSolutionGoo(
-                new LinearSolution() { mask = model.startVoxels, displacments = model.dispVoxels });
+                new LinearSolution() { 
+                    mask = model.startVoxels, 
+                    displacments = model.dispVoxels,
+                    boundaryConditions = nuemanns
+                });
 
             Done();
         }
@@ -203,18 +228,13 @@ namespace Krill.Grasshopper
             DA.GetData(0, ref mesh);
             this.mesh = mesh;
 
-            Mesh mesh2 = null;
-            DA.GetData(1, ref mesh2);
-            if (!(mesh2 is null))
-                this.bcsD = new BoundaryCondition() { mesh = mesh2 };
-
-            Mesh mesh3 = null;
-            DA.GetData(2, ref mesh3);
-            if (!(mesh3 is null))
-                this.bcsN = new BoundaryCondition() { mesh = mesh3 };
+            var bcs = new List<Param.BoundaryConditionGoo>();
+            DA.GetDataList(1, bcs);
+            if (!(bcs is null))
+                this.BCs = bcs.Select(x => x.Value).ToList();
 
             Param.SettingsGoo settings = null;
-            if (DA.GetData(3, ref settings))
+            if (DA.GetData(2, ref settings))
                 this.settings = settings.Value;
         }
 

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Rhino.Geometry;
+using Krill.Containers;
 
 namespace Krill
 {
@@ -23,6 +24,9 @@ namespace Krill
         public Voxels<Vector3d> velVoxels;
         public Voxels<Vector3d> accVoxels;
         public Voxels<Vector3d> densities;
+
+        public List<BoundaryConditionDirechlet> BCD;
+        public List<BoundaryConditionNuemann> BCN;
 
         private int noVoxels;
 
@@ -86,9 +90,21 @@ namespace Krill
                     CalcBondForce(i, j);
             }
 
-            // Temporary
-            if (startVoxels.cellValues[i] == 3)
-                forceVoxels.cellValues[i] += Vector3d.ZAxis;
+            // Nuemann
+            int nIndex = startVoxels.cellValues[i] >> 4;
+            if (nIndex != 0)
+            {
+                var bc = BCN[nIndex - 1];
+                if (bc.normal)
+                {
+                    // Get what the normal is for the area at this point or something
+                    // ...
+                }
+                else
+                {
+                    forceVoxels.cellValues[i] += bc.load;
+                }
+            }
         }
 
         public double CalculateDampening()

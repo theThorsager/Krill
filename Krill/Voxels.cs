@@ -22,6 +22,16 @@ namespace Krill
             cellValues = new T[n*n*n];
         }
 
+        public void SetValues(Voxels<int> mask, int maskbit, T val)
+        {
+            for (int i = 0; i < cellValues.Length; i++)
+            {
+                if ((mask.cellValues[i] & maskbit) != 0)
+                {
+                    cellValues[i] = val;
+                }
+            }
+        }
 
         public List<Point3d> GetPointsAt(T val)
         {

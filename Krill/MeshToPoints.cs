@@ -29,6 +29,9 @@ namespace Krill
 
             int nPadding = (int)Math.Floor(delta);
 
+            // Temporary
+            nPadding *= 2;
+
             int n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate) / Delta + 0.002);
             n += nPadding * 2;
             Point3d origin = bbox.Min - new Vector3d(
@@ -188,10 +191,10 @@ namespace Krill
             }
         }
 
-        public void SetBC(BoundaryCondition bc, double delta, int val)
+        public void SetBC(Containers.IBoundaryCondition bc, double delta, int val)
         {
             Mesh temp = mesh;
-            mesh = bc.mesh;
+            mesh = bc.area;
             FillBoundaryValuesBC(val, delta);
 
             mesh = temp;
