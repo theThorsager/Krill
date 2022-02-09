@@ -79,7 +79,7 @@ namespace Krill
         {
             List<Vector3d> trueDisp = pts.Select(x => func(x)).ToList();
 
-            double n = 1 / pts.Count;
+            double n = 1.0 / (double)pts.Count;
             var res = disp.Zip(trueDisp, 
                 (x, y) =>
                 {

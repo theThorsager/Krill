@@ -7,7 +7,7 @@ using Rhino.Geometry;
 
 namespace Krill
 {
-    internal class Voxels<T>
+    public class Voxels<T>
     {
         public Point3d origin;
         public double delta;

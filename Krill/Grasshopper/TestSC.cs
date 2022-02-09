@@ -5,6 +5,8 @@ using Grasshopper.Kernel;
 using GrasshopperAsyncComponent;
 using Rhino.Geometry;
 
+using Krill.Containers;
+
 namespace Krill.Grasshopper
 {
     public class TestSC : GH_AsyncComponent
@@ -156,11 +158,11 @@ namespace Krill.Grasshopper
                 0x00000100, // mask
                 x => AnalyticalSolutions.SphericalCavity(x, a, sigma, settings.E, 0.25));
 
-            watchsetup.Start();
             conduit.mask = mask;
 
             int n = mask.n;
 
+            watchsetup.Start();
             model.SetDensities(settings.delta*settings.Delta);
             watchsetup.Stop();
             watchloop.Start();

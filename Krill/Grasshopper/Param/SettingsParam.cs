@@ -9,7 +9,7 @@ using Rhino;
 
 namespace Krill.Grasshopper.Param
 {
-    public class SettingsParam : GH_PersistentParam<SettingsGoo>
+    class SettingsParam : GH_Param<SettingsGoo>
     {
         public override Guid ComponentGuid
         {
@@ -17,61 +17,18 @@ namespace Krill.Grasshopper.Param
         }
 
         public SettingsParam() : 
-            base("settings", "settings", "", "Krill", "Params") {}
+            base("settings", "settings", "", "Krill", "Params", GH_ParamAccess.item) 
+        { }
 
-        protected override GH_GetterResult Prompt_Singular(ref SettingsGoo value)
-        {
-            Rhino.Input.Custom.GetOption go = new Rhino.Input.Custom.GetOption();
-            go.SetCommandPrompt("Settings value");
-            go.AcceptNothing(true);
-            go.AddOption("True");
-            go.AddOption("False");
-            go.AddOption("Unknown");
-
-            switch (go.Get())
-            {
-                case Rhino.Input.GetResult.Option:
-                    return GH_GetterResult.success;
-
-                case Rhino.Input.GetResult.Nothing:
-                    return GH_GetterResult.accept;
-
-                default:
-                    return GH_GetterResult.cancel;
-            }
-        }
-
-        protected override GH_GetterResult Prompt_Plural(ref List<SettingsGoo> values)
-        {
-            values = new List<SettingsGoo>();
-
-            while (true)
-            {
-                SettingsGoo val = null;
-                switch (Prompt_Singular(ref val))
-                { 
-                case GH_GetterResult.success:
-                    values.Add(val);
-                    break;
-
-                case GH_GetterResult.accept:
-                    return GH_GetterResult.success;
-
-                case GH_GetterResult.cancel:
-                    values = null;
-                    return GH_GetterResult.cancel;
-                }
-            }
-        }
     }
 
-    public class SettingsGoo : GH_Goo<Krill.Settings>
+    public class SettingsGoo : GH_Goo<Krill.Containers.Settings>
     {
         public SettingsGoo()
         {
             this.Value = null;
         }
-        public SettingsGoo(Krill.Settings settings)
+        public SettingsGoo(Krill.Containers.Settings settings)
         {
             this.Value = settings;
         }

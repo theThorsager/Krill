@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace Krill
 {
-    struct Coord
+    public struct Coord
     {
         public int X;
         public int Y;

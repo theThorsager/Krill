@@ -7,13 +7,13 @@ using Krill;
 
 namespace Krill.Grasshopper.Param
 {
-    public class Settings : GH_Component
+    public class LinearSolution : GH_Component
     {
         /// <summary>
         /// Initializes a new instance of the Settings class.
         /// </summary>
-        public Settings()
-          : base("Settings", "settings",
+        public LinearSolution()
+          : base("LinearSolution", "LinSol",
               "Description",
               "Krill", "Utility")
         {
@@ -24,12 +24,7 @@ namespace Krill.Grasshopper.Param
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            Krill.Containers.Settings setting = new Krill.Containers.Settings();
-            pManager.AddNumberParameter("Delta", "D", "", GH_ParamAccess.item, setting.Delta);
-            pManager.AddNumberParameter("delta", "d", "", GH_ParamAccess.item, setting.delta);
-            pManager.AddIntegerParameter("timesteps", "nt", "", GH_ParamAccess.item, setting.n_timesteps);
-            pManager.AddNumberParameter("bond stiffnes", "c", "", GH_ParamAccess.item, setting.bond_stiffness);
-            pManager.AddNumberParameter("Youngs", "E", "", GH_ParamAccess.item, setting.E);
+            pManager.AddParameter(new Param.LinearSolutionParam(), "solution", "sol", "", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -37,7 +32,8 @@ namespace Krill.Grasshopper.Param
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddParameter(new SettingsParam());
+            pManager.AddPointParameter("points", "pts", "", GH_ParamAccess.list);
+            pManager.AddVectorParameter("displacements", "disp", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -46,26 +42,16 @@ namespace Krill.Grasshopper.Param
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            double Delta = 0;
-            double delta = 0;
-            int n = 0;
-            double stiff = 0;
-            double e = 0;
+            var res = new Param.LinearSolutionGoo();
+            DA.GetData(0, ref res);
+            if (res is null || res.Value is null)
+                return;
 
-            DA.GetData(0, ref Delta);
-            DA.GetData(1, ref delta);
-            DA.GetData(2, ref n);
-            DA.GetData(3, ref stiff);
-            DA.GetData(4, ref e);
+            var points = Voxels<bool>.GetPoints(res.Value.mask, res.Value.displacments, 0, 0x000000FF);
+            var displacemnts = res.Value.displacments.GetValues(res.Value.mask, 0x000000FF);
 
-            DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
-            { 
-                Delta = Delta, 
-                delta = delta, 
-                bond_stiffness = stiff, 
-                n_timesteps = n, 
-                E = e 
-            }));
+            DA.SetDataList(0, points);
+            DA.SetDataList(1, displacemnts);
         }
 
         /// <summary>
@@ -86,7 +72,7 @@ namespace Krill.Grasshopper.Param
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("C900D8DF-D528-4C71-9C17-FB1A83F4CA5B"); }
+            get { return new Guid("CA0FDFF5-F32D-43C9-8285-3CECD5DC4C3F"); }
         }
     }
 }

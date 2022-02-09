@@ -5,6 +5,8 @@ using Grasshopper.Kernel;
 using GrasshopperAsyncComponent;
 using Rhino.Geometry;
 
+using Krill.Containers;
+
 namespace Krill.Grasshopper
 {
     public class LinearPeridynamics : GH_AsyncComponent
@@ -60,6 +62,7 @@ namespace Krill.Grasshopper
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             //pManager.AddIntegerParameter("int", "i", "", GH_ParamAccess.item);
+            pManager.AddParameter(new Param.LinearSolutionParam());
         }
 
         /// <summary>
@@ -99,6 +102,8 @@ namespace Krill.Grasshopper
         BoundaryCondition bcsN { get; set; } = null;
         Settings settings { get; set; } = null;
         VoxelConduit conduit { get; set; }
+
+        Param.LinearSolutionGoo solution { get; set; } = null;
         public LinearPeridynamicsWorker(VoxelConduit vcon) : base(null)
         {
             if (vcon is null)
@@ -147,8 +152,6 @@ namespace Krill.Grasshopper
 
             conduit.mask = mask;
 
-            int n = mask.n;
-
             model.SetDensities(settings.delta*settings.Delta);
 
             double residual_scale = 1;
@@ -157,8 +160,6 @@ namespace Krill.Grasshopper
             {
                 // compute the acceleration
                 model.UpdateForce();
-                // Lock one point for testing or something
-                //model.forceVoxels.cellValues[n * n * n / 2] = Rhino.Geometry.Vector3d.Zero;
                 // Verlet integration, to update pos
                 double c = model.CalculateDampening();
                 model.UpdateDisp(c);
@@ -188,6 +189,9 @@ namespace Krill.Grasshopper
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
 
+            solution = new Param.LinearSolutionGoo(
+                new LinearSolution() { mask = model.startVoxels, displacments = model.dispVoxels });
+
             Done();
         }
 
@@ -216,6 +220,9 @@ namespace Krill.Grasshopper
 
         public override void SetData(IGH_DataAccess DA)
         {
+            if (!(solution is null))
+                DA.SetData(0, solution);
+
             if (CancellationToken.IsCancellationRequested)
                 return;
 
