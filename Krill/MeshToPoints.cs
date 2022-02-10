@@ -173,7 +173,7 @@ namespace Krill
                 foreach (int i in indecies)
                 {
                     Point3d p = voxels.IndexToPoint(i);
-                    for (int j = 1; j < voxels.delta * delta / del; j++)
+                    for (int j = 0; j < voxels.delta * delta / del; j++)
                     {
                         pts.Add(p + normal * j);
                     }

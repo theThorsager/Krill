@@ -4,6 +4,7 @@ using System.Diagnostics;
 using Grasshopper.Kernel;
 using GrasshopperAsyncComponent;
 using Rhino.Geometry;
+using System.Linq;
 
 using Krill.Containers;
 

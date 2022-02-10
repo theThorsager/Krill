@@ -23,7 +23,7 @@ namespace Krill
         public void SetDisplacments(Voxels<Vector3d> disp)
         {
             points = Voxels<bool>.GetPoints(mask, disp);
-            box = new BoundingBox(points); 
+            box = new BoundingBox(points.Where(x => x.IsValid)); 
         }
         public List<Point3d> points { get; set; } = null;
         public BoundingBox box { get; set; } = BoundingBox.Empty;
