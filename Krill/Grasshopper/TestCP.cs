@@ -158,9 +158,12 @@ namespace Krill.Grasshopper
                 area = Mesh.CreateFromClosedPolyline(new Circle(a).ToNurbsCurve().ToPolyline(1e-6, 1e-3, 0.01, 0.1).ToPolyline()),
                 displacement = new Vector3d(0, 0, h)
             };
-            meshToPoints.SetBC(bc, settings.delta, 1 << 8);
+            int tag = 1 << 8;
+            meshToPoints.SetBC(bc, settings.delta, tag);
+            bc.tag = tag;
 
-            model.dispVoxels.SetValues(model.startVoxels, 0xFF00, bc.displacement);
+            model.SetDirechlets(bc);
+            model.startVoxels.SetValues(mask, tag, 0);
 
             Utility.SetValuesOutsideBBox(
                 model.startVoxels, 

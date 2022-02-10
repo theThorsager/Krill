@@ -25,8 +25,8 @@ namespace Krill
         public Voxels<Vector3d> accVoxels;
         public Voxels<Vector3d> densities;
 
-        public List<BoundaryConditionDirechlet> BCD;
-        public List<BoundaryConditionNuemann> BCN;
+        public Voxels<Vector3d> spring;
+        public Voxels<Vector3d> bodyload;
 
         private int noVoxels;
 
@@ -47,6 +47,8 @@ namespace Krill
             accVoxels = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
             densities = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
 
+            spring = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
+            bodyload = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
         }
 
         public void UpdateForce()
@@ -66,7 +68,6 @@ namespace Krill
                             continue;
 
                         updateForce(I, nBonds);
-
                     }
                 }
             }
@@ -90,21 +91,11 @@ namespace Krill
                     CalcBondForce(i, j);
             }
 
-            // Nuemann
-            int nIndex = startVoxels.cellValues[i] >> 4;
-            if (nIndex != 0)
-            {
-                var bc = BCN[nIndex - 1];
-                if (bc.normal)
-                {
-                    // Get what the normal is for the area at this point or something
-                    // ...
-                }
-                else
-                {
-                    forceVoxels.cellValues[i] += bc.load;
-                }
-            }
+            forceVoxels.cellValues[i] += bodyload.cellValues[i];
+            forceVoxels.cellValues[i].X += spring.cellValues[i].X * dispVoxels.cellValues[i].X;
+            forceVoxels.cellValues[i].Y += spring.cellValues[i].Y * dispVoxels.cellValues[i].Y;
+            forceVoxels.cellValues[i].Z += spring.cellValues[i].Z * dispVoxels.cellValues[i].Z;
+
         }
 
         public double CalculateDampening()
@@ -168,7 +159,7 @@ namespace Krill
                                 CalcPartialDensity(I, J, delta);
                         }
 
-                        densities.cellValues[I] *= 2; // 1/4;
+                        densities.cellValues[I] *= 6; // 1/4;
                     }
                 }
             }
@@ -269,6 +260,96 @@ namespace Krill
             R /= (double)n;
 
             return R / F;
+        }
+
+        public void SetDirechlets(BoundaryConditionDirechlet bc)
+        {
+            for (int i = padding; i < noVoxels - padding; i++)
+            {
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int k = padding; k < noVoxels - padding; k++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if ((startVoxels.cellValues[I] & maskbit) == 0)
+                            continue;
+
+                        SetDirechlet(I, bc);
+                    }
+                }
+            }
+        }
+        void SetDirechlet(int i, BoundaryConditionDirechlet bc)
+        {
+            var springSupport = new Vector3d(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
+            var displacment = bc.displacement;
+
+            var resBodyLoad = new Vector3d();
+            var resSpringConstant = new Vector3d();
+
+            for (int j = 0; j < this.nlist.Length; j++)
+            {
+                // Find all spring constants of springs that are locked by Direchlet
+                int J = i + this.nlist[j];
+                if (startVoxels.cellValues[J] == bc.tag)
+                    resSpringConstant += setDirechlet(i, J, bc);
+
+                J = i - this.nlist[j];
+                if (startVoxels.cellValues[J] == bc.tag)
+                    resSpringConstant += setDirechlet(i, J, bc);
+                // sum all different constant into one for each direction
+                // Sum for springs in parallel
+
+            }
+
+            Vector3d copy = resSpringConstant;
+
+            //// combine with spring support constant
+            resSpringConstant.X = 1.0 / (1.0 / resSpringConstant.X + 1.0 / springSupport.X);
+            resSpringConstant.Y = 1.0 / (1.0 / resSpringConstant.Y + 1.0 / springSupport.Y);
+            resSpringConstant.Z = 1.0 / (1.0 / resSpringConstant.Z + 1.0 / springSupport.Z);
+
+            spring.cellValues[i] += resSpringConstant;
+            // Calculate a bodyload based on enforced displacment and the spring constant
+            resBodyLoad.X = -displacment.X * resSpringConstant.X;
+            resBodyLoad.Y = -displacment.Y * resSpringConstant.Y;
+            resBodyLoad.Z = -displacment.Z * resSpringConstant.Z;
+            bodyload.cellValues[i] += resBodyLoad;
+        }
+
+        private Vector3d setDirechlet(int i, int j, BoundaryConditionDirechlet bc)
+        {
+            // Find how much of this vector that is in deformable volume
+            // TODO!!
+            Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+            double t = Rhino.Geometry.Intersect.Intersection.MeshRay(bc.area, new Ray3d(startVoxels.IndexToPoint(i), xi_vec));
+            if (t < 0)
+                return Vector3d.Zero;
+
+            xi_vec *= t;    // new start length
+
+            double length = xi_vec.Length;
+            double h = 1e-6;
+
+            double sx = ((xi_vec + h * Vector3d.XAxis).Length - length) / length;
+            Vector3d sx_vec = sx * xi_vec / length;
+            sx_vec *= bond_stiffness * vol / h;
+            double sy = ((xi_vec + h * Vector3d.YAxis).Length - length) / length;
+            Vector3d sy_vec = sy * xi_vec / length;
+            sy_vec *= bond_stiffness * vol / h;
+            double sz = ((xi_vec + h * Vector3d.ZAxis).Length - length) / length;
+            Vector3d sz_vec = sz * xi_vec / length;
+            sz_vec *= bond_stiffness * vol / h;
+
+            // split up for all cardinal directions
+            double lx = sx_vec.X < 0 ? -sx_vec.X : sx_vec.X;
+            double fx = -lx;
+            double ly = sy_vec.Y < 0 ? -sy_vec.Y : sy_vec.Y;
+            double fy = -ly;
+            double lz = sz_vec.Z < 0 ? -sz_vec.Z : sz_vec.Z;
+            double fz = -lz;
+
+            return new Vector3d(fx, fy, fz);
         }
 
     }

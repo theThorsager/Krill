@@ -141,33 +141,16 @@ namespace Krill.Grasshopper
                 settings.Delta * settings.Delta * settings.Delta,
                 settings.delta);
             
-
-            var BCD = new List<BoundaryConditionDirechlet>();
-            var BCN = new List<BoundaryConditionNuemann>();
-            
-
-            foreach (IBoundaryCondition bc in BCs)
+            int count = 0;
+            foreach (BoundaryConditionDirechlet bc in BCs)
             {
-                if (bc is BoundaryConditionDirechlet)
-                {
-                    BCD.Add(bc as BoundaryConditionDirechlet);
-                    meshToPoints.SetBC(bc, settings.delta, BCD.Count << 8);
-            
-                    model.dispVoxels.SetValues(model.startVoxels, 0xFF00, BCD.Last().displacement);
-                }
-                else if (bc is BoundaryConditionNuemann)
-                {
-                    BCN.Add(bc as BoundaryConditionNuemann);
-                    meshToPoints.SetBC(bc, settings.delta, BCN.Count << 4);
-                }
-                else
-                {
-                    // ?
-                }
+                count++;
+                int tag = count << 8;
+                meshToPoints.SetBC(bc, settings.delta, tag);
+                bc.tag = tag;
+                model.SetDirechlets(bc);
             }
 
-            model.BCD = BCD;
-            model.BCN = BCN;
             conduit.mask = mask;
 
             model.SetDensities(settings.delta*settings.Delta);
