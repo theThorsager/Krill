@@ -9,17 +9,17 @@ using Krill.Containers;
 
 namespace Krill.Grasshopper
 {
-    public class TestSC : GH_AsyncComponent
+    public class TestCP : GH_AsyncComponent
     {
         /// <summary>
         /// Initializes a new instance of the AsyncTest class.
         /// </summary>
-        public TestSC()
-          : base("TestSC", "TestSC",
+        public TestCP()
+          : base("TestCP", "TestCP",
               "Description",
               "Krill", "Solvers")
         {
-            BaseWorker = new TestSCWorker(null);
+            BaseWorker = new TestCPWorker(null);
         }
 
         public override void RemovedFromDocument(GH_Document document)
@@ -44,11 +44,10 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddMeshParameter("mesh", "m", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("a", "a", "", GH_ParamAccess.item);
-            pManager.AddNumberParameter("sigma", "sigma", "", GH_ParamAccess.item);
+            pManager.AddNumberParameter("h", "h", "", GH_ParamAccess.item);
             pManager.AddParameter(new Param.SettingsParam());
-            pManager[3].Optional = true;
+            pManager[2].Optional = true;
         }
 
         /// <summary>
@@ -87,22 +86,22 @@ namespace Krill.Grasshopper
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("B7E4066D-7C12-4E3E-ACEE-2858EC76D635"); }
+            get { return new Guid("63D5D3BC-C017-4751-AC6B-50F513F7C067"); }
         }
     }
 
-    class TestSCWorker : WorkerInstance
+    class TestCPWorker : WorkerInstance
     {
         Mesh mesh { get; set; } = null;
         Settings settings { get; set; } = null;
         VoxelConduit conduit { get; set; }
         double a = 1;
-        double sigma = 1;
+        double h = 1;
 
         List<Point3d> points = null;
         List<Vector3d> vectors = null;
         string results = null;
-        public TestSCWorker(VoxelConduit vcon) : base(null)
+        public TestCPWorker(VoxelConduit vcon) : base(null)
         {
             if (vcon is null)
                 conduit = new VoxelConduit();
@@ -130,6 +129,12 @@ namespace Krill.Grasshopper
             Stopwatch watchsetup = new Stopwatch();
             Stopwatch watchloop = new Stopwatch();
 
+            double factor = 3;
+            mesh = Mesh.CreateFromBox(
+                new BoundingBox(
+                    new Point3d(-factor * a, -factor * a, -factor * a), 
+                    new Point3d(factor * a, factor * a, -0.01*a)), 1, 1, 1);
+
             watchsetup.Start();
             // make mesh to voxel thing
             MeshToPoints meshToPoints = new MeshToPoints(mesh, settings.Delta, settings.delta);
@@ -148,12 +153,21 @@ namespace Krill.Grasshopper
 
             watchsetup.Stop();
 
+            var bc = new BoundaryConditionDirechlet()
+            {
+                area = Mesh.CreateFromClosedPolyline(new Circle(a).ToNurbsCurve().ToPolyline(1e-6, 1e-3, 0.01, 0.1).ToPolyline()),
+                displacement = new Vector3d(0, 0, h)
+            };
+            meshToPoints.SetBC(bc, settings.delta, 1 << 8);
+
+            model.dispVoxels.SetValues(model.startVoxels, 0xFF00, bc.displacement);
+
             Utility.SetValuesOutsideBBox(
                 model.startVoxels, 
                 model.dispVoxels, 
                 mesh.GetBoundingBox(true), 
                 0x00000100, // mask
-                x => AnalyticalSolutions.SphericalCavity(x, a, sigma, settings.E, 0.25));
+                x => AnalyticalSolutions.CylinderPunch(x, a, h, 0.25));
 
             conduit.mask = mask;
 
@@ -204,9 +218,9 @@ namespace Krill.Grasshopper
 
             int power = 2; /* the 2 norm */
             double errornorm = Utility.ErrorNorm(points, vectors, a, power , 
-                x => AnalyticalSolutions.SphericalCavity(x, a, sigma, settings.E, 0.25));
+                x => AnalyticalSolutions.CylinderPunch(x, a, h, 0.25));
 
-            results = $"Spherical Cavity test: \n" +
+            results = $"Cylinder Punch test: \n" +
                 $"  Input values: a = {a}, Delta = {settings.Delta}, delta = {settings.delta} \n" +
                 $"  Error in the {power} norm: {errornorm}\n" +
                 $"  Time to setup: {watchsetup.ElapsedMilliseconds}ms\n" +
@@ -215,19 +229,15 @@ namespace Krill.Grasshopper
             Done();
         }
 
-        public override WorkerInstance Duplicate() => new TestSCWorker(conduit);
+        public override WorkerInstance Duplicate() => new TestCPWorker(conduit);
 
         public override void GetData(IGH_DataAccess DA, GH_ComponentParamServer Params)
         {
-            Mesh mesh = null;
-            DA.GetData(0, ref mesh);
-            this.mesh = mesh;
-
-            DA.GetData(1, ref a);
-            DA.GetData(2, ref sigma);
+            DA.GetData(0, ref a);
+            DA.GetData(1, ref h);
 
             Param.SettingsGoo settings = null;
-            if (DA.GetData(3, ref settings))
+            if (DA.GetData(2, ref settings))
                 this.settings = settings.Value;
         }
 
