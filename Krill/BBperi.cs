@@ -281,7 +281,6 @@ namespace Krill
         }
         void SetDirechlet(int i, BoundaryConditionDirechlet bc)
         {
-            var springSupport = new Vector3d(double.PositiveInfinity, double.PositiveInfinity, double.PositiveInfinity);
             var displacment = bc.displacement;
 
             var resBodyLoad = new Vector3d();
@@ -302,12 +301,9 @@ namespace Krill
 
             }
 
-            Vector3d copy = resSpringConstant;
-
-            //// combine with spring support constant
-            resSpringConstant.X = 1.0 / (1.0 / resSpringConstant.X + 1.0 / springSupport.X);
-            resSpringConstant.Y = 1.0 / (1.0 / resSpringConstant.Y + 1.0 / springSupport.Y);
-            resSpringConstant.Z = 1.0 / (1.0 / resSpringConstant.Z + 1.0 / springSupport.Z);
+            resSpringConstant.X *= bc.lockX ? 1 : 0;
+            resSpringConstant.Y *= bc.lockY ? 1 : 0;
+            resSpringConstant.Z *= bc.lockZ ? 1 : 0;
 
             spring.cellValues[i] += resSpringConstant;
             // Calculate a bodyload based on enforced displacment and the spring constant
