@@ -13,5 +13,6 @@ namespace Krill.Containers
         public Voxels<int> mask { get; set; } = null;
         public Voxels<Vector3d> displacments { get; set; } = null;
         public List<BoundaryConditionNuemann> boundaryConditions { get; set; } = null;
+        public double peridelta { get; set; } = 0;
     }
 }
