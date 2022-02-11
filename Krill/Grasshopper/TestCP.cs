@@ -157,7 +157,9 @@ namespace Krill.Grasshopper
             var bc = new BoundaryConditionDirechlet()
             {
                 area = Mesh.CreateFromClosedPolyline(new Circle(a).ToNurbsCurve().ToPolyline(1e-6, 1e-3, 0.01, 0.1).ToPolyline()),
-                displacement = new Vector3d(0, 0, h)
+                displacement = new Vector3d(0, 0, h),
+                lockY = false,
+                lockX = false
             };
             int tag = 1 << 8;
             meshToPoints.SetBC(bc, settings.delta, tag);
