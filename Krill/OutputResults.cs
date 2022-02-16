@@ -78,6 +78,7 @@ namespace Krill
         {
             for (int i = 0; i < noVoxels; i++)
             {
+                // lägg till statement om vad som händer då partiklen också hanterar Dirichlet boundary
                 if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
 

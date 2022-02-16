@@ -44,6 +44,9 @@ namespace Krill.Grasshopper
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddParameter(new Param.LinearSolutionParam());
+            pManager.AddPointParameter("StartPoints", "pts", "", GH_ParamAccess.list);
+            pManager.AddVectorParameter("StartVectors", "vecs", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("ScaleFactorForDelta", "sf", "", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -52,6 +55,7 @@ namespace Krill.Grasshopper
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddCurveParameter("curve", "c", "", GH_ParamAccess.list);
+            // pManager.AddCurveParameter("curve2", "c2", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -87,7 +91,10 @@ namespace Krill.Grasshopper
     class LoadPathsWorker : WorkerInstance
     {
         Containers.LinearSolution linearSolution = null;
-        List<Curve> curves { get; set; } = null;
+        List<Polyline> pLine { get; set; } = null;
+        List<Point3d> startPoints { get; set; }
+        List<Vector3d> startVectors { get; set; }
+        double scaleDelta { get; set; }
         public LoadPathsWorker() : base(null)
         { }
 
@@ -96,8 +103,37 @@ namespace Krill.Grasshopper
             if (CancellationToken.IsCancellationRequested) return;
 
             // ...
+            ReportProgress(Id, 0);
+            pLine = new List<Polyline>();
 
+            Voxels<int> startVoxels = linearSolution.mask;
+            Voxels<Vector3d> dispVoxels = linearSolution.displacments;
 
+            double pDelta = linearSolution.peridelta;
+           
+            int n = startVoxels.n;
+            int[] neighOff = Utility.GetNeighbourOffsets(n, pDelta);
+
+            // Generating principal stresses, setting the elastic modulus to 1 since the actual stresses are not important, only the relation.
+            OutputResults output = new OutputResults(startVoxels, neighOff, 1, 0.25);
+            output.UpdateStrains(dispVoxels);
+            output.UpdateStresses();
+            output.UpdatePrincipalStresses();
+            if (CancellationToken.IsCancellationRequested)
+                return;
+
+            for (int i = 0; i < startPoints.Count; i++)
+            {
+                if (CancellationToken.IsCancellationRequested)
+                    return;
+                LoadPathCurve lPath = new LoadPathCurve(startVoxels, startPoints[i], startVectors[i], output.princpDir, output.princpStress);
+
+                lPath.ConstructLoadPath(scaleDelta);
+
+                pLine.Add(lPath.loadPath);
+            }
+            if (CancellationToken.IsCancellationRequested)
+                return;
             Done();
         }
 
@@ -108,6 +144,18 @@ namespace Krill.Grasshopper
             Param.LinearSolutionGoo res = null;
             DA.GetData(0, ref res);
             linearSolution = res.Value;
+
+            List<Point3d> startPts = new List<Point3d>();
+            DA.GetDataList(1, startPts);
+            startPoints = startPts;
+
+            List<Vector3d> startVecs = new List<Vector3d>();
+            DA.GetDataList(2, startVecs);
+            startVectors = startVecs;
+
+            double scale = new double();
+            DA.GetData(3, ref scale);
+            scaleDelta = scale;
         }
 
         public override void SetData(IGH_DataAccess DA)
@@ -115,8 +163,8 @@ namespace Krill.Grasshopper
             if (CancellationToken.IsCancellationRequested)
                 return;
 
-            if (!(curves is null))
-                DA.SetDataList(0, curves);
+            if (!(pLine is null))
+                DA.SetDataList(0, pLine);
         }
     }
 }
