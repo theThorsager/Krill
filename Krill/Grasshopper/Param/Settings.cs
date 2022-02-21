@@ -47,18 +47,13 @@ namespace Krill.Grasshopper.Param
         {
             double Delta = 0;
             double delta = 0;
-            int n = 0;
+            int n_t = 0;
             double E = 0;
 
             DA.GetData(0, ref Delta);
             DA.GetData(1, ref delta);
-            DA.GetData(2, ref n);
+            DA.GetData(2, ref n_t);
             DA.GetData(3, ref E);
-
-            // E to bondstiffness, see: Peridigm User Guide
-            double d = Delta * delta;
-            double K3d = E / (3.0 * (1.0 - 2.0 * 0.25));
-            double c = 18.0 * K3d / (Math.PI * d * d * d * d);
 
             if (delta <= Math.Sqrt(2))
             {
@@ -66,12 +61,30 @@ namespace Krill.Grasshopper.Param
                 delta = Math.Sqrt(2) + 0.0001;
             }
 
+            // E to bondstiffness, see: Peridigm User Guide
+            double d = Delta * delta;
+            double K3d = E / (3.0 * (1.0 - 2.0 * 0.25));
+            double c = 18.0 * K3d / (Math.PI * d * d * d * d);
+
+            int n = (int)Math.Ceiling(delta) * 2 + 1;
+            int[] off = Utility.GetNeighbourOffsets(n, delta);
+            Voxels<bool> dummy = new Voxels<bool>(Point3d.Origin, Delta, n);
+            c = 0;
+            double volume = Delta * Delta * Delta;
+            int I = n / 2;
+            for (int i = 0; i < off.Length; i++)
+            {
+                double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
+                c += volume * distance * 2;     // times two due to symmetry
+            }
+            c = 18 * K3d / c;
+
             DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
             { 
                 Delta = Delta, 
                 delta = delta, 
                 bond_stiffness = c, 
-                n_timesteps = n, 
+                n_timesteps = n_t, 
                 E = E
             }));
         }
