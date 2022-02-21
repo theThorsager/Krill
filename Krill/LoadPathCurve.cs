@@ -14,20 +14,20 @@ namespace Krill
         public Point3d startPt;
         public Vector3d startVec;
         public Voxels<Vector3d[]> princpDir;
-        public Voxels<Vector3d> princpStress;
+        // public Voxels<Vector3d> princpStress;
 
         public Polyline loadPath;
 
         private double d;
 
         public LoadPathCurve(Voxels<int> startVoxels, Point3d startPt, Vector3d startVec,
-                                Voxels<Vector3d[]> princpDir, Voxels<Vector3d> princpStress)
+                                Voxels<Vector3d[]> princpDir)
         {
             this.startVoxels = startVoxels;
             this.startPt = startPt;
             this.startVec = startVec;
             this.princpDir = princpDir;
-            this.princpStress = princpStress;
+            // this.princpStress = princpStress;
 
             d = startVoxels.delta;
         }
@@ -39,44 +39,48 @@ namespace Krill
 
             Vector3d moveVec = startVec;
             moveVec.Unitize();
-            Point3d pos = startPt;
+            Point3d x1 = startPt;
             List<Point3d> pathPts = new List<Point3d>();
 
             double step = d * scaleStep;
 
-            pathPts.Add(pos);
+            pathPts.Add(x1);
 
-            pos += step * moveVec;
-            pathPts.Add(pos);
+            x1 += step * moveVec;
+            pathPts.Add(x1);
 
             for (int i = 0; i < maxNoStep; i++)
             {
                 Vector3d oldVec = moveVec;
                 bool endCond;
-                Vector3d dfx0 = CLKFilterLinearMoveVec(pos, oldVec, out endCond);
+                Point3d x0 = x1;
+                Vector3d dfx0 = CLKFilterLinearMoveVec(x0, oldVec, out endCond);
                 Vector3d aveDf = dfx0;
 
                 Vector3d oldAveDf;
-                Point3d x1 = pos;
 
                 for (int j = 0; j < 10; j++)
                 {
+                    x1 = x0 + step * aveDf;
                     Vector3d dfx1 = CLKFilterLinearMoveVec(x1, oldVec, out endCond);
                     oldAveDf = aveDf;
                     aveDf = (dfx0+ dfx1)*0.5;
+                                  
+                    if (j == 9)
+                        break;
 
-                    x1 = pos + step * aveDf;
-                    if ((aveDf - oldAveDf).SquareLength < 1e-12)
+                    if ((aveDf - oldAveDf).SquareLength < 1e-18)
                         break;                    
                 }
 
                 moveVec = aveDf;
-                pos = x1;
+
+                x1 = x0 + step * moveVec;
 
                 if (endCond)
                     break;
 
-                pathPts.Add(pos);                
+                pathPts.Add(x1);                
             }
             loadPath = new Polyline(pathPts);
         }
@@ -167,7 +171,7 @@ namespace Krill
             // Kolla närmare på vad som händer längst med en kant
             if ((startVoxels.cellValues[indVoxel] & maskbit) == 0)
             {
-                // Det fungerar poteniellt bättre än 0-vektorn, mer tester kan behövas
+                // Det fungerar poteniellt bättre än 0-vektorn, mer tester behövs
                 direction = prevDir;
                 return direction;
             }

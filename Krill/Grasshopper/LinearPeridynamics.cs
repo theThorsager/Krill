@@ -140,7 +140,8 @@ namespace Krill.Grasshopper
                 settings.delta);
             model.kernel = Utility.getKernelWeights(mask.n, settings.delta, neighOff);
 
-            
+            model.SetVolumes();
+
             int count = 0;
             foreach (IBoundaryCondition bc in BCs)
             {
@@ -168,7 +169,6 @@ namespace Krill.Grasshopper
                 }
             }
 
-            model.SetVolumes();
             model.SetVolumesStiffness();
 
             conduit.mask = mask;
@@ -214,17 +214,11 @@ namespace Krill.Grasshopper
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
 
-            // List<BoundaryConditionNuemann> converted = ToNuemannBCs(BCs)
-            List<BoundaryConditionNuemann> nuemanns = null;
-
             solution = new Param.LinearSolutionGoo(
-                new LinearSolution() { 
-                    mask = model.startVoxels, 
-                    displacments = model.dispVoxels,
-                    boundaryConditions = nuemanns
-                });
-
-            Done();
+                new LinearSolution() { mask = model.startVoxels, displacments = model.dispVoxels, peridelta = settings.delta, 
+                    elasticModulus = settings.E, bondStiffness = settings.bond_stiffness, nList = model.nlist, springs = model.spring });
+              
+                Done();
         }
 
         public override WorkerInstance Duplicate() => new LinearPeridynamicsWorker(conduit);

@@ -16,9 +16,12 @@ namespace Krill
 
         public double E;
         public double nu;
+        public double bond_stiffness;
+        public Voxels<Vector3d> springs;
 
         private int noVoxels;
         private int noBonds;
+        private double vol;
 
         public Voxels<double> strainXX;
         public Voxels<double> strainYY;
@@ -39,7 +42,7 @@ namespace Krill
         public Voxels<Vector3d> princpStress;   // "magnitude" (only sign is relevant?)
         public Voxels<Vector3d[]> princpDir;
 
-        public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio)
+        public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs)
         {
             this.startVoxels = startVoxels;
             this.nList = nList;
@@ -47,12 +50,17 @@ namespace Krill
             E = ElasticModulus;
             nu = PoissonsRatio;
 
+            this.bond_stiffness = bond_stiffness;
+            this.springs = springs;
+
             noVoxels = startVoxels.n * startVoxels.n * startVoxels.n;
             noBonds = nList.Length * 2;     // *2 because the way the neigbour list is constructed
 
             Point3d origin = startVoxels.origin;
             double delta = startVoxels.delta;
             int n = startVoxels.n;
+
+            vol = delta * delta * delta;
 
             strainXX = new Voxels<double>(origin, delta, n);
             strainYY = new Voxels<double>(origin, delta, n);
@@ -74,6 +82,241 @@ namespace Krill
             princpDir = new Voxels<Vector3d[]>(origin, delta, n);
         }
 
+        public void UpdateFakeStress(Voxels<Vector3d> dispVoxels)
+        {
+            for (int i = 0; i < noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                Matrix E;
+                Matrix A = new Matrix(noBonds + 3, 6);  // Först utan att tänka på special vid boundary
+                Matrix S = new Matrix(noBonds + 3, 1);
+
+                int bondCount = 0;
+
+                for (int ii = 0; ii < noBonds / 2; ii++)
+                {
+                    int j = i + nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        bondCount += 1;
+
+                        CalcStretchAndNormal(dispVoxels, i, j, out double s, out Vector3d n);
+                        s *= bond_stiffness*vol;
+                        S[ii, 0] = s;
+
+                        A[ii, 0] = n.X * n.X;
+                        A[ii, 1] = n.Y * n.Y;
+                        A[ii, 2] = n.Z * n.Z;
+                        A[ii, 3] = 2 * n.X * n.Y;
+                        A[ii, 4] = 2 * n.X * n.Z;
+                        A[ii, 5] = 2 * n.Y * n.Z;
+                    }
+
+                    j = i - nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        bondCount += 1;
+
+                        CalcStretchAndNormal(dispVoxels, i, j, out double s, out Vector3d n);
+                        s *= bond_stiffness * vol;
+                        S[noBonds / 2 + ii, 0] = s;
+
+                        A[noBonds / 2 + ii, 0] = n.X * n.X;
+                        A[noBonds / 2 + ii, 1] = n.Y * n.Y;
+                        A[noBonds / 2 + ii, 2] = n.Z * n.Z;
+                        A[noBonds / 2 + ii, 3] = 2 * n.X * n.Y;
+                        A[noBonds / 2 + ii, 4] = 2 * n.X * n.Z;
+                        A[noBonds / 2 + ii, 5] = 2 * n.Y * n.Z;
+                    }
+                }
+
+                Matrix AT = A.Duplicate();
+                AT.Transpose();
+
+                Matrix AA = AT * A;
+                AA.Invert(1e-6);        // For now chose an arbitrary tolerance
+
+                E = (AA * AT) * S;
+
+
+                Vector3d d = dispVoxels.cellValues[i];
+                int noRows = A.RowCount;
+
+                double factor = 1;
+                double factorA = 1;
+
+                if (springs.cellValues[i].X != 0)
+                {
+                    A[noRows - 3, 0] = 1 * factorA;
+                    S[noRows - 3, 0] = Math.Abs(springs.cellValues[i].X * d.X / (vol/dispVoxels.delta)) * factor * Math.Sign(E[0, 0]);
+                }
+                
+                if (springs.cellValues[i].Y != 0)
+                {
+                    A[noRows - 2, 1] = 1 * factorA;
+                    //S[noRows - 2, 0] = d.Y;
+                    S[noRows - 2, 0] = Math.Abs(springs.cellValues[i].Y * d.Y / (vol / dispVoxels.delta)) * factor * Math.Sign(E[1, 0]);
+                }
+
+                if (springs.cellValues[i].Z != 0)
+                {
+                    A[noRows - 1, 2] = 1 * factorA;
+                    //S[noRows - 1, 0] = d.Z;
+                    S[noRows - 1, 0] = Math.Abs(springs.cellValues[i].Z * d.Z / (vol / dispVoxels.delta)) * factor * Math.Sign(E[2, 0]);
+                }
+
+                AT = A.Duplicate();
+                AT.Transpose();
+
+                AA = AT * A;
+                AA.Invert(1e-6);        // For now chose an arbitrary tolerance
+
+                E = (AA * AT) * S;
+
+                stressXX.cellValues[i] = E[0, 0];
+                stressYY.cellValues[i] = E[1, 0];
+                stressZZ.cellValues[i] = E[2, 0];
+                stressXY.cellValues[i] = E[3, 0];
+                stressXZ.cellValues[i] = E[4, 0];
+                stressYZ.cellValues[i] = E[5, 0];
+            }
+        }
+
+        public void UpdateFakeStrains(Voxels<Vector3d> dispVoxels)
+        {
+            for (int i = 0; i < noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                Matrix E;
+                Matrix A = new Matrix(noBonds + 3, 6);  // Först utan att tänka på special vid boundary
+                Matrix S = new Matrix(noBonds + 3, 1);
+
+                int bondCount = 0;
+
+                for (int ii = 0; ii < noBonds / 2; ii++)
+                {
+                    int j = i + nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        bondCount++;
+
+                        CalcStretchAndNormal(dispVoxels, i, j, out double s, out Vector3d n);
+                        S[ii, 0] = s;
+
+                        A[ii, 0] = n.X * n.X;
+                        A[ii, 1] = n.Y * n.Y;
+                        A[ii, 2] = n.Z * n.Z;
+                        A[ii, 3] = 2 * n.X * n.Y;
+                        A[ii, 4] = 2 * n.X * n.Z;
+                        A[ii, 5] = 2 * n.Y * n.Z;
+                    }
+
+                    j = i - nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        bondCount++;
+
+                        CalcStretchAndNormal(dispVoxels, i, j, out double s, out Vector3d n);
+                        S[noBonds / 2 + ii, 0] = s;
+
+                        A[noBonds / 2 + ii, 0] = n.X * n.X;
+                        A[noBonds / 2 + ii, 1] = n.Y * n.Y;
+                        A[noBonds / 2 + ii, 2] = n.Z * n.Z;
+                        A[noBonds / 2 + ii, 3] = 2 * n.X * n.Y;
+                        A[noBonds / 2 + ii, 4] = 2 * n.X * n.Z;
+                        A[noBonds / 2 + ii, 5] = 2 * n.Y * n.Z;
+                    }
+                }
+
+                Matrix AT = A.Duplicate();
+                AT.Transpose();
+
+                Matrix AA = AT * A;
+                AA.Invert(1e-6);        // For now chose an arbitrary tolerance
+
+                E = (AA * AT) * S;
+
+
+                Vector3d d = dispVoxels.cellValues[i];
+                int noRows = A.RowCount;
+
+                double factorA = 1;
+                double factorS = 1;
+
+                int dirBonds = (startVoxels.cellValues[i] >> 24) - bondCount;
+
+                //factorA = dirBonds;
+                //factorS = 1.0 * startVoxels.delta;
+
+                //if (springs.cellValues[i].X != 0)
+                //{
+                //    A[noRows - 3, 0] = 1 * factorA;
+                //    S[noRows - 3, 0] = Math.Abs(springs.cellValues[i].X * d.X / (bond_stiffness)) * factorS * Math.Sign(E[0, 0]);
+                //}
+
+                //if (springs.cellValues[i].Y != 0)
+                //{
+                //    A[noRows - 2, 1] = 1 * factorA;
+                //    S[noRows - 2, 0] = Math.Abs(springs.cellValues[i].Y * d.Y / (bond_stiffness)) * factorS * Math.Sign(E[1, 0]);
+                //}
+
+                //if (springs.cellValues[i].Z != 0)
+                //{
+                //    A[noRows - 1, 2] = 1 * factorA;
+                //    S[noRows - 1, 0] = Math.Abs(springs.cellValues[i].Z * d.Z / (bond_stiffness)) * factorS * Math.Sign(E[2, 0]);
+                //}
+
+                //if (springs.cellValues[i].X != 0)
+                //{
+                //    A[noRows - 3, 0] = 1 * factorA;
+                //    S[noRows - 3, 0] = springs.cellValues[i].X * d.X / (bond_stiffness) * factorS;
+                //}
+
+                //if (springs.cellValues[i].Y != 0)
+                //{
+                //    A[noRows - 2, 1] = 1 * factorA;
+                //    S[noRows - 2, 0] = (springs.cellValues[i].Y * d.Y / (bond_stiffness)) * factorS;
+                //}
+
+                //if (springs.cellValues[i].Z != 0)
+                //{
+                //    A[noRows - 1, 2] = 1 * factorA;
+                //    S[noRows - 1, 0] = (springs.cellValues[i].Z * d.Z / (bond_stiffness)) * factorS;
+                //}
+
+                //AT = A.Duplicate();
+                //AT.Transpose();
+
+                //AA = AT * A;
+                //AA.Invert(1e-6);        // For now chose an arbitrary tolerance
+
+                //E = (AA * AT) * S;
+
+                strainXX.cellValues[i] = E[0, 0];
+                strainYY.cellValues[i] = E[1, 0];
+                strainZZ.cellValues[i] = E[2, 0];
+                strainXY.cellValues[i] = E[3, 0];
+                strainXZ.cellValues[i] = E[4, 0];
+                strainYZ.cellValues[i] = E[5, 0];
+            }
+        }
+
+        void CalcStretchAndNormal(Voxels<Vector3d> dispVoxels, int i, int j, out double s, out Vector3d n)
+        {
+            Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+            Vector3d xi_eta_vec = dispVoxels.cellValues[j] - dispVoxels.cellValues[i] + xi_vec;
+
+            double xi = xi_vec.Length;
+            double y = xi_eta_vec.Length;
+
+            s = (y - xi) / xi;
+            n = xi_eta_vec / y;
+        }
+
         public void UpdateStrains(Voxels<Vector3d> dispVoxels)
         {
             for (int i = 0; i < noVoxels; i++)
@@ -83,9 +326,9 @@ namespace Krill
                     continue;
 
                 Matrix F;
-                Matrix A = new Matrix(noBonds*3, 9);
+                Matrix A = new Matrix(noBonds * 3 + 9, 9);  // Plus 9 because of D-boundary
                 A.Zero();
-                Matrix b = new Matrix(noBonds*3, 1);
+                Matrix b = new Matrix(noBonds * 3 + 9, 1);
                 b.Zero();
 
                 for (int ii = 0; ii < noBonds / 2; ii++)
@@ -134,6 +377,93 @@ namespace Krill
                         b[noBonds / 2 * 3 + ii * 3 + 2, 0] = b_j[2, 0];
                     }
                 }
+                //Double[] xi_D = new Double[3];
+
+                //if (springs.cellValues[i].X == 0)
+                //    xi_D[0] = 0;
+                //else
+                //    xi_D[0] = bond_stiffness * vol / springs.cellValues[i].X;
+
+                //if (springs.cellValues[i].Y == 0)
+                //    xi_D[1] = 0;
+                //else
+                //    xi_D[1] = bond_stiffness * vol / springs.cellValues[i].Y;
+
+                //if (springs.cellValues[i].Z == 0)
+                //    xi_D[2] = 0;
+                //else
+                //    xi_D[2] = 0.5 * startVoxels.delta;
+                    // xi_D[2] = bond_stiffness * vol / springs.cellValues[i].Z;
+
+                //xi_D[0] = 0;
+                //xi_D[1] = 0;
+                //xi_D[2] = 0;
+
+                int noRows = A.RowCount;
+
+                //for (int j = 0; j < 3; j++)
+                //{
+                //    A[noRows - (j * 3 + 8), 0 + j] = xi_D[j];
+                //    A[noRows - (j * 3 + 9), 4 + j] = xi_D[j];
+                //    A[noRows - (j * 3 - 7), 7 + j] = xi_D[j];
+                //}
+
+                //A[noRows - 9, 0] = xi_D[0];
+                //A[noRows - 8, 3] = xi_D[0];
+                //A[noRows - 7, 6] = xi_D[0];
+
+                //A[noRows - 6, 1] = xi_D[1];
+                //A[noRows - 5, 4] = xi_D[1];
+                //A[noRows - 4, 7] = xi_D[1];
+
+                //A[noRows - 3, 2] = xi_D[2];
+                //A[noRows - 2, 5] = xi_D[2];
+                //A[noRows - 1, 8] = xi_D[2];
+
+                //Vector3d eta_D = dispVoxels.cellValues[i];
+                //eta_D.X += xi_D[0];
+                //eta_D.Y += xi_D[1];
+                //eta_D.Z += xi_D[2];
+
+                //if (xi_D[0] == 0)
+                //{
+                //    b[noRows - 9, 0] = 0;
+                //    b[noRows - 8, 0] = 0;
+                //    b[noRows - 7, 0] = 0;
+                //}
+                //else
+                //{
+                //    b[noRows - 9, 0] = eta_D.X;
+                //    b[noRows - 8, 0] = eta_D.Y;
+                //    b[noRows - 7, 0] = eta_D.Z;
+                //}
+
+                //if (xi_D[1] == 0)
+                //{
+                //    b[noRows - 6, 0] = 0;
+                //    b[noRows - 5, 0] = 0;
+                //    b[noRows - 4, 0] = 0;
+                //}
+                //else
+                //{
+                //    b[noRows - 6, 0] = eta_D.X;
+                //    b[noRows - 5, 0] = eta_D.Y;
+                //    b[noRows - 4, 0] = eta_D.Z;
+                //}
+
+                //if (xi_D[2] == 0)
+                //{
+                //    b[noRows - 3, 0] = 0;
+                //    b[noRows - 2, 0] = 0;
+                //    b[noRows - 1, 0] = 0;
+                //}
+                //else
+                //{
+                //    b[noRows - 3, 0] = eta_D.X;
+                //    b[noRows - 2, 0] = eta_D.Y;
+                //    b[noRows - 1, 0] = eta_D.Z;
+                //}
+                            
                 // F = (A'*A)^(-1)*A'*b
                 // Borde kanske introducera weightning matrix W för bättre resultat
                 Matrix AT = A.Duplicate();

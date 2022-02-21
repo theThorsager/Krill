@@ -190,7 +190,7 @@ namespace Krill
 
         public void RemoveUnstressedVoxels(double factor, double E)
         {
-            OutputResults vonMises = new OutputResults(startVoxels, nlist, E, 0.25);
+            OutputResults vonMises = new OutputResults(startVoxels, nlist, E, 0.25, bond_stiffness, spring);
 
             vonMises.UpdateStrains(dispVoxels);
             vonMises.UpdateStresses();
