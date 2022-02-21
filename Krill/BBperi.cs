@@ -29,6 +29,8 @@ namespace Krill
         public Voxels<Vector3d> spring;
         public Voxels<Vector3d> bodyload;
 
+        public Voxels<double> stiffnessMod;
+
         private int noVoxels;
 
         public BBperi(Voxels<int> orgVoxels, double Bond_stiffness, int[] neighbour_list,
@@ -50,6 +52,9 @@ namespace Krill
 
             spring = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
             bodyload = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
+            
+            stiffnessMod = new Voxels<double>(startVoxels.origin, startVoxels.delta, noVoxels);
+
         }
 
         public void UpdateForce(double factor = 1)
@@ -204,9 +209,11 @@ namespace Krill
 
         void CalcBondForce(int i, int j, double factor)
         {
-            int vols = startVoxels.cellValues[i] >> 24;
-            vols += startVoxels.cellValues[j] >> 24;
-            factor *= (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
+            //int vols = startVoxels.cellValues[i] >> 24;
+            //vols += startVoxels.cellValues[j] >> 24;
+            //factor *= (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
+
+            factor *= (1.0 / stiffnessMod.cellValues[i] + 1.0 / stiffnessMod.cellValues[j]) * 0.5;
 
             Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
 
@@ -397,6 +404,8 @@ namespace Krill
             double length = xi_vec.Length;
             double h = 1e-6;
 
+            stiffnessMod.cellValues[i] += length;
+
             double sx = ((xi_vec + h * Vector3d.XAxis).Length - length) / length;
             Vector3d sx_vec = sx * xi_vec / length;
             sx_vec *= bond_stiffness * vol / h;
@@ -442,6 +451,35 @@ namespace Krill
                         }
 
                         startVoxels.cellValues[I] |= sum << 24;
+                    }
+                }
+            }
+        }
+
+        public void SetVolumesStiffness()
+        {
+            for (int k = padding; k < noVoxels - padding; k++)
+            {
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int i = padding; i < noVoxels - padding; i++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if ((startVoxels.cellValues[I]) == 0)
+                            continue;
+
+                        double sum = 0;
+                        for (int jj = 0; jj < nlist.Length; jj++)
+                        {
+                            int J = I + nlist[jj];
+                            if ((startVoxels.cellValues[J]) != 0)
+                                sum += (startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(I)).Length;
+                            J = I - nlist[jj];
+                            if ((startVoxels.cellValues[J]) != 0)
+                                sum += (startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(I)).Length;
+                        }
+
+                        stiffnessMod.cellValues[I] += sum;
                     }
                 }
             }

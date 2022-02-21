@@ -169,6 +169,7 @@ namespace Krill.Grasshopper
             }
 
             model.SetVolumes();
+            model.SetVolumesStiffness();
 
             conduit.mask = mask;
 

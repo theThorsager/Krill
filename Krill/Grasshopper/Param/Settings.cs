@@ -69,15 +69,15 @@ namespace Krill.Grasshopper.Param
             int n = (int)Math.Ceiling(delta) * 2 + 1;
             int[] off = Utility.GetNeighbourOffsets(n, delta);
             Voxels<bool> dummy = new Voxels<bool>(Point3d.Origin, Delta, n);
-            c = 0;
-            double volume = Delta * Delta * Delta;
-            int I = n / 2;
-            for (int i = 0; i < off.Length; i++)
-            {
-                double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
-                c += volume * distance * 2;     // times two due to symmetry
-            }
-            c = 18 * K3d / c;
+            c = 18 * K3d / (Delta* Delta* Delta);
+            //double volume = Delta * Delta * Delta;
+            //int I = n / 2;
+            //for (int i = 0; i < off.Length; i++)
+            //{
+            //    double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
+            //    c += volume * distance * 2;     // times two due to symmetry
+            //}
+            //c = 18 * K3d / c;
 
             DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
             { 
