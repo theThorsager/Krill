@@ -120,11 +120,6 @@ namespace Krill.Grasshopper
             if (settings is null)
                 settings = new Settings();
 
-            if (settings.delta <= Math.Sqrt(2))
-            {
-                this.Parent.AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "delta is clamped to sqrt(2)");
-                settings.delta = Math.Sqrt(2) + 0.0001;
-            }
             if (CancellationToken.IsCancellationRequested) return;
 
             Stopwatch watchsetup = new Stopwatch();
@@ -151,22 +146,11 @@ namespace Krill.Grasshopper
             BBperi model = new BBperi(mask, settings.bond_stiffness, neighOff, 
                 settings.Delta * settings.Delta * settings.Delta,
                 settings.delta);
+            model.kernel = Utility.getKernelWeights(mask.n, settings.delta, neighOff);
 
             watchsetup.Stop();
 
-            var bc = new BoundaryConditionDirechlet()
-            {
-                area = Mesh.CreateFromClosedPolyline(new Circle(a).ToNurbsCurve().ToPolyline(1e-6, 1e-3, 0.01, 0.1).ToPolyline()),
-                displacement = new Vector3d(0, 0, h),
-                lockY = false,
-                lockX = false
-            };
-            int tag = 1 << 8;
-            meshToPoints.SetBC(bc, settings.delta, tag);
-            bc.tag = tag;
-
-            model.SetDirechlets(bc);
-            model.startVoxels.SetValues(mask, tag, 0);
+            
 
             Utility.SetValuesOutsideBBox(
                 model.startVoxels, 
@@ -175,6 +159,23 @@ namespace Krill.Grasshopper
                 0x00000100, // mask
                 x => AnalyticalSolutions.CylinderPunch(x, a, h, 0.25));
 
+
+            model.SetVolumes();
+
+            var bc = new BoundaryConditionDirechlet()
+            {
+                area = Mesh.CreateFromClosedPolyline(new Circle(a).ToNurbsCurve().ToPolyline(1e-6, 1e-3, 0.01, 0.1).ToPolyline()),
+                displacement = new Vector3d(0, 0, h),
+                lockY = false,
+                lockX = false,
+                normal = false
+            };
+            int tag = 2 << 8;
+            meshToPoints.SetBCD(bc, settings.delta, tag);
+            bc.tag = tag;
+
+            model.SetDirechlets(bc);
+            model.startVoxels.SetValues(mask, tag, 0);
             conduit.mask = mask;
 
             int n = mask.n;
@@ -189,11 +190,11 @@ namespace Krill.Grasshopper
             {
                 // compute the acceleration
                 model.UpdateForce();
-                double c = model.CalculateDampening();
+                //double c = model.CalculateDampening();
                 // Verlet integration, to update pos
-                model.UpdateDisp(c);
+                model.UpdateDisp(0.05);
 
-                double residual = model.ComputeResidual();
+                //double residual = model.ComputeResidual();
                 if (i % 10 == 0)
                 {
                     if (CancellationToken.IsCancellationRequested) return;
@@ -201,18 +202,21 @@ namespace Krill.Grasshopper
                     conduit.SetDisplacments(model.dispVoxels);
                     conduit.Update();
                     
-                    if (i == 0)
-                    {
-                        residual_scale = Math.Log(residual);
-                        ReportProgress(Id, 0);
-                    }
-                    else
-                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol );
+                    //if (i == 0)
+                    //{
+                    //    residual_scale = Math.Log(residual);
+                    //    ReportProgress(Id, 0);
+                    //}
+                    //else
+                    //    ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol );
                 }
 
                 // Check termination criteria
-                if (residual < tolerance)
-                    break;
+                //if (residual < tolerance)
+                //    break;
+
+                ReportProgress(Id, (double)i / settings.n_timesteps);
+
             }
             watchloop.Stop();
             // Display data

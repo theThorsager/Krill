@@ -111,24 +111,22 @@ namespace Krill.Grasshopper
 
         public override void DoWork(Action<string, double> ReportProgress, Action Done)
         {
+            ReportProgress(Id, 0);
+
             double tolerance = 1e-6;
             double logtol = Math.Log(tolerance);
 
             if (settings is null)
                 settings = new Settings();
 
-            if (settings.delta <= Math.Sqrt(2))
-            {
-                this.Parent.AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "delta is clamped to sqrt(2)");
-                settings.delta = Math.Sqrt(2) + 0.0001;
-            }
+            
             if (CancellationToken.IsCancellationRequested) return;
 
             // make mesh to voxel thing
             MeshToPoints meshToPoints = new MeshToPoints(mesh, settings.Delta, settings.delta);
             meshToPoints.FillBoundaryValues();
             meshToPoints.FillInternalValues();
-
+            meshToPoints.RefineBoundaries();
             
 
             Voxels<int> mask = meshToPoints.voxels;
@@ -140,51 +138,75 @@ namespace Krill.Grasshopper
             BBperi model = new BBperi(mask, settings.bond_stiffness, neighOff, 
                 settings.Delta * settings.Delta * settings.Delta,
                 settings.delta);
+            model.kernel = Utility.getKernelWeights(mask.n, settings.delta, neighOff);
+
             
             int count = 0;
-            foreach (BoundaryConditionDirechlet bc in BCs)
+            foreach (IBoundaryCondition bc in BCs)
             {
-                count++;
-                int tag = count << 8;
-                meshToPoints.SetBC(bc, settings.delta, tag);
-                bc.tag = tag;
-                model.SetDirechlets(bc);
-                model.startVoxels.SetValues(mask, tag, 0);
+                if (bc is BoundaryConditionDirechlet bcD)
+                {
+                    count++;
+                    int tag = count << 8;
+                    meshToPoints.SetBCD(bcD, settings.delta, tag);
+                    bcD.tag = tag;
+                    model.SetDirechlets(bcD);
+                    model.startVoxels.SetValues(mask, tag, 0);
+                }
+                else if (bc is BoundaryConditionNuemann bcN)
+                {
+                    count++;
+                    int tag = count << 2;
+                    meshToPoints.SetBCN(bcN, tag);
+                    model.SetNuemann(bcN, tag);
+                    // removing the tag should not be needed :)
+                    model.startVoxels.SetValues(mask, tag, 1);
+                }
+                else
+                {
+                    // error
+                }
             }
+
+            model.SetVolumes();
 
             conduit.mask = mask;
 
-            model.SetDensities(settings.delta*settings.Delta);
+            model.SetDensities(settings.delta*settings.Delta, 12);
 
             double residual_scale = 1;
             // Make a looop
             for (int i = 0; i < settings.n_timesteps; i++)
             {
                 // compute the acceleration
-                model.UpdateForce();
+                model.UpdateForce(Math.Min((double) (i+1.0) / 200, 1));
                 // Verlet integration, to update pos
-                double c = model.CalculateDampening();
+                double c = 0.01; // model.CalculateDampening();
                 model.UpdateDisp(c);
 
-                double residual = model.ComputeResidual();
-                if (i % 10 == 0)
+                //System.Threading.Thread.Sleep(100);
+
+
+                //double residual = model.ComputeResidual();
+                if (i % 1 == 0)
                 {
                     if (CancellationToken.IsCancellationRequested) return;
 
                     conduit.SetDisplacments(model.dispVoxels);
                     conduit.Update();
-                    if (i == 0)
-                    {
-                        residual_scale = Math.Log(residual);
-                        ReportProgress(Id, 0);
-                    }
-                    else
-                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol);
+                    //if (i == 0)
+                    //{
+                    //    residual_scale = Math.Log(residual);
+                    //    ReportProgress(Id, 0);
+                    //}
+                    //else
+                    //    ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol);
                 }
+                ReportProgress(Id, (double)i / settings.n_timesteps);
 
                 // Check termination criteria
-                if (residual < tolerance)
-                    break;
+                //if (residual < tolerance)
+                //    break;
             }
 
             // Display data

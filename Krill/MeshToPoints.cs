@@ -30,14 +30,14 @@ namespace Krill
             int nPadding = (int)Math.Floor(delta);
 
             // Temporary
-            nPadding *= 2;
+            //nPadding *= 2;
 
             int n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate) / Delta + 0.002);
             n += nPadding * 2;
             Point3d origin = bbox.Min - new Vector3d(
-                (nPadding + 0.001) * Delta, 
-                (nPadding + 0.001) * Delta, 
-                (nPadding + 0.001) * Delta);
+                (nPadding) * Delta, 
+                (nPadding) * Delta, 
+                (nPadding) * Delta);
 
             voxels = new Voxels<int>(origin, Delta, n);
         }
@@ -191,13 +191,35 @@ namespace Krill
             }
         }
 
-        public void SetBC(Containers.IBoundaryCondition bc, double delta, int val)
+        public void SetBCD(Containers.IBoundaryCondition bc, double delta, int val)
         {
             Mesh temp = mesh;
             mesh = bc.area;
             FillBoundaryValuesBC(val, delta);
 
             mesh = temp;
+        }
+
+        public void SetBCN(Containers.IBoundaryCondition bc, int val)
+        {
+            Mesh temp = mesh;
+            mesh = bc.area;
+            FillBoundaryValues(val);
+
+            mesh = temp;
+        }
+
+        public void RefineBoundaries()
+        {
+            for (int i = 0; i < voxels.cellValues.Length; i++)
+            {
+                if (voxels.cellValues[i] == 1)
+                {
+                    Point3d pt = voxels.IndexToPoint(i);
+                    bool inside = mesh.IsPointInside(pt, 0, true);
+                    voxels.cellValues[i] = inside ? 1 : 0;
+                }
+            }
         }
 
 

@@ -60,6 +60,12 @@ namespace Krill.Grasshopper.Param
             double K3d = E / (3.0 * (1.0 - 2.0 * 0.25));
             double c = 18.0 * K3d / (Math.PI * d * d * d * d);
 
+            if (delta <= Math.Sqrt(2))
+            {
+                this.AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "delta is clamped to sqrt(2)");
+                delta = Math.Sqrt(2) + 0.0001;
+            }
+
             DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
             { 
                 Delta = Delta, 

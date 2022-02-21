@@ -7,7 +7,7 @@ using System.Diagnostics;
 
 namespace Krill.Grasshopper
 {
-    public class MeshToVolume : GH_Component
+    public class TestBonds : GH_Component
     {
         /// <summary>
         /// Each implementation of GH_Component must provide a public 
@@ -16,8 +16,8 @@ namespace Krill.Grasshopper
         /// Subcategory the panel. If you use non-existing tab or panel names, 
         /// new tabs/panels will automatically be created.
         /// </summary>
-        public MeshToVolume()
-          : base("MeshToVolume", "MtV",
+        public TestBonds()
+          : base("TestBonds", "TestBonds",
             "Description",
             "Krill", "TestComponents")
         {
@@ -28,10 +28,9 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddMeshParameter("mesh", "mesh", "", GH_ParamAccess.item);
-            pManager.AddMeshParameter("bc", "m", "", GH_ParamAccess.item);
-            pManager[1].Optional = true;
-
+            pManager.AddMeshParameter("m", "m", "", GH_ParamAccess.item);
+            pManager.AddNumberParameter("radius", "r", "", GH_ParamAccess.item);
+            pManager.AddIntegerParameter("i", "i", "", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -39,9 +38,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddPointParameter("ptsB", "ptsB", "", GH_ParamAccess.list);
-            pManager.AddPointParameter("ptsI", "ptsI", "", GH_ParamAccess.list);
-            pManager.AddPointParameter("ptsO", "ptsO", "", GH_ParamAccess.list);
+            pManager.AddLineParameter("bonds", "bonds", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -51,47 +48,40 @@ namespace Krill.Grasshopper
         /// to store data in output parameters.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
+            double r = 0;
+            int i = 0;
             Mesh mesh = null;
             DA.GetData(0, ref mesh);
-            Mesh mesh2 = null;
-            DA.GetData(1, ref mesh2);
+            DA.GetData(1, ref r);
+            DA.GetData(2, ref i);
+            if (r <= 0 || i < 0)
+                return;
+
             Stopwatch watch = new Stopwatch();
+            watch.Start();
+            MeshToPoints meshToPoints = new MeshToPoints(mesh, 1, r);
+            int[] neighOff = Utility.GetNeighbourOffsets(meshToPoints.voxels.n, r);
+            int n = meshToPoints.voxels.n;
+            List<Line> results = new List<Line>();
 
-            //BoundaryCondition bcs = null;
-            //if (mesh2 != null)
-            //    bcs = new BoundaryCondition() { mesh = mesh2 };
-
-            if (!(mesh is null))
+            Point3d center = meshToPoints.voxels.IndexToPoint(Math.Min(i, n*n*n));
+            Func<int, Point3d> f = ii => meshToPoints.voxels.IndexToPoint(Math.Max(Math.Min(ii, n * n * n), 0));
+            for (int a = 0; a < neighOff.Length; a++)
             {
-                MeshToPoints meshToPoints = new MeshToPoints(mesh, 0.05, 3.01);
+                int j = i + neighOff[a];
+                results.Add(new Line(center, f(j)));
 
-                meshToPoints.FillBoundaryValues();
-
-                meshToPoints.FillInternalValues();
-
-                meshToPoints.RefineBoundaries();
-
-                //if (!(bcs is null))
-                //    meshToPoints.SetBC(bcs, 3.01, 8);
-
-                watch.Start();
-                //conduit = new VoxelConduit();
-                //conduit.mask = meshToPoints.voxels;
-                //conduit.Enabled = true;
-                //conduit.Update();
-                watch.Stop();
-                DA.SetDataList(0, meshToPoints.voxels.GetPointsAt(1));
-                DA.SetDataList(1, meshToPoints.voxels.GetPointsAt(2));
-                //DA.SetDataList(2, meshToPoints.voxels.GetPointsAt(0));
-                //DA.SetDataList(1, meshToPoints.points);
-
-
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, $"Elapsed Time is {watch.ElapsedMilliseconds} ms");
-
+                j = i - neighOff[a];
+                results.Add(new Line(center, f(j)));
             }
-        }
 
-        VoxelConduit conduit;
+            watch.Stop();
+
+            DA.SetDataList(0, results);
+
+            AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, $"Elapsed Time is {watch.ElapsedMilliseconds} ms");
+
+        }
 
         /// <summary>
         /// Provides an Icon for every component that will be visible in the User Interface.
@@ -106,6 +96,6 @@ namespace Krill.Grasshopper
         /// It is vital this Guid doesn't change otherwise old ghx files 
         /// that use the old ID will partially fail during loading.
         /// </summary>
-        public override Guid ComponentGuid => new Guid("81E6EB96-95A9-4254-9CAD-95C647CBD90D");
+        public override Guid ComponentGuid => new Guid("98BC92C2-CE55-49EC-9F6F-44B488CB9BB4");
     }
 }

@@ -119,5 +119,23 @@ namespace Krill
             j = (i - k * n * n) / n;
             i = i - k * n * n - j * n;
         }
+
+        public void commRel(Voxels<T> other, Coord min, Coord max, int offset)
+        {
+            for (int k = min.Z; k < max.Z; k++)
+            {
+                for (int j = min.Y; j < max.Y; j++)
+                {
+                    for (int i = min.X; i < max.X; i++)
+                    {
+                        int I = ToLinearIndex(i, j, k);
+                        int J = I + offset;
+
+                        this.cellValues[I] = other.cellValues[J];
+                    }
+                }
+            }
+        }
+
     }
 }

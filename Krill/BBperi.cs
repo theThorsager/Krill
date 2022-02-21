@@ -15,6 +15,7 @@ namespace Krill
         public double bond_stiffness;
         public Voxels<int> startVoxels;
         public int[] nlist;    // Neighbour list
+        public double[] kernel;
         public double vol;   // Volume of the particles (same for all)
         public int padding;
 
@@ -37,7 +38,7 @@ namespace Krill
             bond_stiffness = Bond_stiffness;
             nlist = neighbour_list;
             vol = volume;
-            this.padding = 0; // (int)Math.Floor(delta);
+            this.padding = (int)Math.Floor(delta);
 
             noVoxels = startVoxels.n;
             forceVoxels = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
@@ -51,47 +52,51 @@ namespace Krill
             bodyload = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
         }
 
-        public void UpdateForce()
+        public void UpdateForce(double factor = 1)
         {
             int nBonds = nlist.Length;
 
             // Assuming the bonds never break, otherwise need a new if-statement
 
-            for (int i = padding; i < noVoxels - padding; i++)
+            for (int k = padding; k < noVoxels - padding; k++)
             {
                 for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    for (int k = padding; k < noVoxels - padding; k++)
+                    for (int i = padding; i < noVoxels - padding; i++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
                         if ((startVoxels.cellValues[I] & maskbit) == 0)
                             continue;
 
-                        updateForce(I, nBonds);
+                        updateForce(I, nBonds, factor);
                     }
                 }
             }
         }
 
 
-        private void updateForce(int i, int nBonds)
+        private void updateForce(int i, int nBonds, double factor)
         {
             oldforceVoxels.cellValues[i] = forceVoxels.cellValues[i];
             forceVoxels.cellValues[i] = Vector3d.Zero;
 
             for (int a = 0; a < nBonds; a++)
             {
-                int j = i + nlist[a];
+                int jp = i + nlist[a];
+                int jm = i - nlist[a];
+                double surfCorr = 1;
+                //surfCorr = kernel[a];
+                bool p = startVoxels.cellValues[jp] != 0;
+                bool m = startVoxels.cellValues[jm] != 0;
+                
+                if (p)
+                    CalcBondForce(i, jp, surfCorr);
 
-                if (startVoxels.cellValues[j] != 0)
-                    CalcBondForce(i, j);
-
-                j = i - nlist[a];
-                if (startVoxels.cellValues[j] != 0)
-                    CalcBondForce(i, j);
+                if (m)
+                    CalcBondForce(i, jm, surfCorr);
             }
 
-            forceVoxels.cellValues[i] += bodyload.cellValues[i];
+            forceVoxels.cellValues[i] += bodyload.cellValues[i] * factor;
             forceVoxels.cellValues[i].X += spring.cellValues[i].X * dispVoxels.cellValues[i].X;
             forceVoxels.cellValues[i].Y += spring.cellValues[i].Y * dispVoxels.cellValues[i].Y;
             forceVoxels.cellValues[i].Z += spring.cellValues[i].Z * dispVoxels.cellValues[i].Z;
@@ -103,11 +108,11 @@ namespace Krill
             double denominator = 0;
             double nominator = 0;
 
-            for (int i = padding; i < noVoxels - padding; i++)
+            for (int k = padding; k < noVoxels - padding; k++)
             {
                 for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    for (int k = padding; k < noVoxels - padding; k++)
+                    for (int i = padding; i < noVoxels - padding; i++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
                         if ((startVoxels.cellValues[I] & maskbit) == 0)
@@ -130,18 +135,18 @@ namespace Krill
             nominator = nominator > 0 ? nominator : -nominator;
             double c = 2.0 * Math.Sqrt(nominator / denominator);
 
-            return c;
+            return Math.Min(c, 1.0);
         }
 
-        public void SetDensities(double delta)
+        public void SetDensities(double delta, double factor = 24)
         {
             int noBonds = nlist.Length;
 
-            for (int i = padding; i < noVoxels - padding; i++)
+            for (int k = padding; k < noVoxels - padding; k++)
             {
                 for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    for (int k = padding; k < noVoxels - padding; k++)
+                    for (int i = padding; i < noVoxels - padding; i++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
                         if ((startVoxels.cellValues[I] & maskbit) == 0)
@@ -159,7 +164,7 @@ namespace Krill
                                 CalcPartialDensity(I, J, delta);
                         }
 
-                        densities.cellValues[I] *= 6; // 1/4;
+                        densities.cellValues[I] *= 0.25 * factor; // 1/4;
                     }
                 }
             }
@@ -178,36 +183,60 @@ namespace Krill
             densities.cellValues[i] += xi_vec;
         }
 
-        void CalcBondForce(int i, int j)
+        public void RemoveUnstressedVoxels(double factor, double E)
         {
+            OutputResults vonMises = new OutputResults(startVoxels, nlist, E, 0.25);
+
+            vonMises.UpdateStrains(dispVoxels);
+            vonMises.UpdateStresses();
+            vonMises.UpdateVonMises();
+
+            double maxVon = vonMises.vonMises.cellValues.Max();
+            double cutoff = maxVon * factor;
+
+            for (int i = 0; i < noVoxels*noVoxels*noVoxels; i++)
+            {
+                if (vonMises.vonMises.cellValues[i] < cutoff)
+                    startVoxels.cellValues[i] = 0;
+            }
+
+        }
+
+        void CalcBondForce(int i, int j, double factor)
+        {
+            int vols = startVoxels.cellValues[i] >> 24;
+            vols += startVoxels.cellValues[j] >> 24;
+            factor *= (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
+
             Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
 
             Vector3d xi_eta_vec = dispVoxels.cellValues[j] - dispVoxels.cellValues[i] + xi_vec;
 
             double xi = xi_vec.Length;
             double y = xi_eta_vec.Length;
-            double s = (y - xi) / xi;
+            double s = (y - xi) / xi;      // Engineering strain
+            double s2 = Math.Log(y / xi);   // True strain
+            double s3 = (y * y - xi * xi) / (2 * xi * xi);   // Green Lagrange strain
 
             double f = s * bond_stiffness * vol;
-
-            forceVoxels.cellValues[i] += f * xi_eta_vec / y;
+            forceVoxels.cellValues[i] += factor * f * xi_eta_vec / y;
         }
 
         public void UpdateDisp(double c)
         {
             // Based on velocity_verlet from Peripy
 
-            for (int i = padding; i < noVoxels - padding; i++)
+            for (int k = padding; k < noVoxels - padding; k++)
             {
                 for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    for (int k = padding; k < noVoxels - padding; k++)
+                    for (int i = padding; i < noVoxels - padding; i++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
                         if ((startVoxels.cellValues[I] & maskbit) == 0)
                             continue;
 
-                        Vector3d velHalf = velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[i];
+                        Vector3d velHalf = velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I];
 
                         accVoxels.cellValues[I] = forceVoxels.cellValues[I];
 
@@ -254,7 +283,7 @@ namespace Krill
             }
             F *= bond_stiffness / n;
             
-            F = Math.Max(1, F);
+            F = Math.Max(0.001, F);
 
             // average residual per point
             R /= (double)n;
@@ -262,13 +291,44 @@ namespace Krill
             return R / F;
         }
 
-        public void SetDirechlets(BoundaryConditionDirechlet bc)
+        public void SetNuemann(BoundaryConditionNuemann bc, int tag)
         {
-            for (int i = padding; i < noVoxels - padding; i++)
+            int tot = startVoxels.cellValues.Count(x => (x & tag) != 0);
+
+            for (int k = padding; k < noVoxels - padding; k++)
             {
                 for (int j = padding; j < noVoxels - padding; j++)
                 {
-                    for (int k = padding; k < noVoxels - padding; k++)
+                    for (int i = padding; i < noVoxels - padding; i++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if ((startVoxels.cellValues[I] & tag) == 0)
+                            continue;
+
+                        Vector3d load = bc.load;
+                        // divide by number of cells
+                        load /= tot;
+
+                        // reorient to normal direction
+                        if (bc.normal)
+                        {
+                            bc.area.ClosestPoint(startVoxels.IndexToPoint(I), out Point3d trash, out Vector3d normal, startVoxels.delta * 0.87 /* sqrt(3)/2 */);
+                            load = normal * load.Z;
+                        }
+
+                        bodyload.cellValues[I] += load;
+                    }
+                }
+            }
+        }
+
+        public void SetDirechlets(BoundaryConditionDirechlet bc)
+        {
+            for (int k = padding; k < noVoxels - padding; k++)
+            {
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int i = padding; i < noVoxels - padding; i++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
                         if ((startVoxels.cellValues[I] & maskbit) == 0)
@@ -279,6 +339,7 @@ namespace Krill
                 }
             }
         }
+
         void SetDirechlet(int i, BoundaryConditionDirechlet bc)
         {
             var displacment = bc.displacement;
@@ -286,34 +347,42 @@ namespace Krill
             var resBodyLoad = new Vector3d();
             var resSpringConstant = new Vector3d();
 
+            int sum = startVoxels.cellValues[i] >> 24;
+            int localsum = 0;
+            bc.area.ClosestPoint(startVoxels.IndexToPoint(i), out Point3d trash, out Vector3d normal, padding * startVoxels.delta * 0.87 * 2 /* sqrt(3)/2 */);
             for (int j = 0; j < this.nlist.Length; j++)
             {
                 // Find all spring constants of springs that are locked by Direchlet
                 int J = i + this.nlist[j];
                 if (startVoxels.cellValues[J] == bc.tag)
-                    resSpringConstant += setDirechlet(i, J, bc);
+                    resSpringConstant += setDirechlet(i, J, bc, ref localsum);
 
                 J = i - this.nlist[j];
                 if (startVoxels.cellValues[J] == bc.tag)
-                    resSpringConstant += setDirechlet(i, J, bc);
+                    resSpringConstant += setDirechlet(i, J, bc, ref localsum);
                 // sum all different constant into one for each direction
                 // Sum for springs in parallel
 
             }
+            startVoxels.cellValues[i] &= ~(0xFFF << 24);
+            startVoxels.cellValues[i] |= ((sum + localsum) << 24);
 
             resSpringConstant.X *= bc.lockX ? 1 : 0;
             resSpringConstant.Y *= bc.lockY ? 1 : 0;
             resSpringConstant.Z *= bc.lockZ ? 1 : 0;
 
+
+            Vector3d disp = bc.normal ? normal * bc.displacement.Z : bc.displacement;
+
             spring.cellValues[i] += resSpringConstant;
             // Calculate a bodyload based on enforced displacment and the spring constant
-            resBodyLoad.X = -displacment.X * resSpringConstant.X;
-            resBodyLoad.Y = -displacment.Y * resSpringConstant.Y;
-            resBodyLoad.Z = -displacment.Z * resSpringConstant.Z;
+            resBodyLoad.X = -disp.X * resSpringConstant.X;
+            resBodyLoad.Y = -disp.Y * resSpringConstant.Y;
+            resBodyLoad.Z = -disp.Z * resSpringConstant.Z;
             bodyload.cellValues[i] += resBodyLoad;
         }
 
-        private Vector3d setDirechlet(int i, int j, BoundaryConditionDirechlet bc)
+        private Vector3d setDirechlet(int i, int j, BoundaryConditionDirechlet bc, ref int sum)
         {
             // Find how much of this vector that is in deformable volume
             // TODO!!
@@ -322,6 +391,7 @@ namespace Krill
             if (t < 0)
                 return Vector3d.Zero;
 
+            sum++;
             xi_vec *= t;    // new start length
 
             double length = xi_vec.Length;
@@ -348,5 +418,33 @@ namespace Krill
             return new Vector3d(fx, fy, fz);
         }
 
+        public void SetVolumes()
+        {
+            for (int k = padding; k < noVoxels - padding; k++)
+            {
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int i = padding; i < noVoxels - padding; i++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if ((startVoxels.cellValues[I]) == 0)
+                            continue;
+
+                        int sum = 1;
+                        for (int jj = 0; jj < nlist.Length; jj++)
+                        {
+                            int J = I + nlist[jj];
+                            if ((startVoxels.cellValues[J]) != 0)
+                                ++sum;
+                            J = I - nlist[jj];
+                            if ((startVoxels.cellValues[J]) != 0)
+                                ++sum;
+                        }
+
+                        startVoxels.cellValues[I] |= sum << 24;
+                    }
+                }
+            }
+        }
     }
 }
