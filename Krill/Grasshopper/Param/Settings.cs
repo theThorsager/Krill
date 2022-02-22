@@ -64,20 +64,10 @@ namespace Krill.Grasshopper.Param
             // E to bondstiffness, see: Peridigm User Guide
             double d = Delta * delta;
             double K3d = E / (3.0 * (1.0 - 2.0 * 0.25));
-            double c = 18.0 * K3d / (Math.PI * d * d * d * d);
-
-            int n = (int)Math.Ceiling(delta) * 2 + 1;
-            int[] off = Utility.GetNeighbourOffsets(n, delta);
-            Voxels<bool> dummy = new Voxels<bool>(Point3d.Origin, Delta, n);
-            c = 18 * K3d / (Delta* Delta* Delta);
-            //double volume = Delta * Delta * Delta;
-            //int I = n / 2;
-            //for (int i = 0; i < off.Length; i++)
-            //{
-            //    double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
-            //    c += volume * distance * 2;     // times two due to symmetry
-            //}
-            //c = 18 * K3d / c;
+            
+            //double c = Analytical(K3d, d);
+            //double c = StiffnessMod(K3d, Delta);
+            double c = VolumeCorr(K3d, Delta, delta);
 
             DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
             { 
@@ -87,6 +77,33 @@ namespace Krill.Grasshopper.Param
                 n_timesteps = n_t, 
                 E = E
             }));
+        }
+
+        private double VolumeCorr(double K3d, double Delta, double delta)
+        {
+            int n = (int)Math.Ceiling(delta) * 2 + 1;
+            int[] off = Utility.GetNeighbourOffsets(n, delta);
+            Voxels<bool> dummy = new Voxels<bool>(Point3d.Origin, Delta, n);
+            double c = 0;
+            double volume = Delta * Delta * Delta;
+            int I = n / 2;
+            for (int i = 0; i < off.Length; i++)
+            {
+                double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
+                c += volume * distance * 2;     // times two due to symmetry
+            }
+            return 18 * K3d / c;
+        }
+
+        private double StiffnessMod(double K3d, double Delta)
+        {
+            return 18 * K3d / (Delta * Delta * Delta);
+        }
+
+        private double Analytical(double K3d, double d)
+        {
+            // E to bondstiffness, see: Peridigm User Guide
+            return 18.0 * K3d / (Math.PI * d * d * d * d);
         }
 
         /// <summary>

@@ -169,6 +169,12 @@ namespace Krill
                                 CalcPartialDensity(I, J, delta);
                         }
 
+                        densities.cellValues[I] -= spring.cellValues[I];
+
+                        //densities.cellValues[I].X += Math.Abs(bodyload.cellValues[I].X);
+                        //densities.cellValues[I].Y += Math.Abs(bodyload.cellValues[I].Y);
+                        //densities.cellValues[I].Z += Math.Abs(bodyload.cellValues[I].Z);
+
                         densities.cellValues[I] *= 0.25 * factor; // 1/4;
                     }
                 }
@@ -209,11 +215,11 @@ namespace Krill
 
         void CalcBondForce(int i, int j, double factor)
         {
-            //int vols = startVoxels.cellValues[i] >> 24;
-            //vols += startVoxels.cellValues[j] >> 24;
-            //factor *= (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
+            int vols = startVoxels.cellValues[i] >> 24;
+            vols += startVoxels.cellValues[j] >> 24;
+            factor *= (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
 
-            factor *= (1.0 / stiffnessMod.cellValues[i] + 1.0 / stiffnessMod.cellValues[j]) * 0.5;
+            //factor *= (1.0 / stiffnessMod.cellValues[i] + 1.0 / stiffnessMod.cellValues[j]) * 0.5;
 
             Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
 
@@ -231,7 +237,6 @@ namespace Krill
 
         public void UpdateDisp(double c)
         {
-            // Based on velocity_verlet from Peripy
 
             for (int k = padding; k < noVoxels - padding; k++)
             {
@@ -243,7 +248,24 @@ namespace Krill
                         if ((startVoxels.cellValues[I] & maskbit) == 0)
                             continue;
 
-                        Vector3d velHalf = velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I];
+                        // Based on velocity_verlet from Peripy
+
+                        //Vector3d velHalf = velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I];
+
+                        //accVoxels.cellValues[I] = forceVoxels.cellValues[I];
+
+                        //accVoxels.cellValues[I].X /= densities.cellValues[I].X;
+                        //accVoxels.cellValues[I].Y /= densities.cellValues[I].Y;
+                        //accVoxels.cellValues[I].Z /= densities.cellValues[I].Z;
+
+                        //accVoxels.cellValues[I] -= c * velHalf;
+
+                        //velVoxels.cellValues[I] = velHalf + 0.5 * accVoxels.cellValues[I];
+
+                        //dispVoxels.cellValues[I] = dispVoxels.cellValues[I] + (velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I]);
+
+                        ///////////////////////////////////////////////////////////////////
+                        // Based on Wikipedias Velocity Verlet with added dampening
 
                         accVoxels.cellValues[I] = forceVoxels.cellValues[I];
 
@@ -251,12 +273,12 @@ namespace Krill
                         accVoxels.cellValues[I].Y /= densities.cellValues[I].Y;
                         accVoxels.cellValues[I].Z /= densities.cellValues[I].Z;
 
-                        accVoxels.cellValues[I] -= c * velHalf;
+                        //accVoxels.cellValues[I] -= c * velVoxels.cellValues[I];
+                        //velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
 
-                        velVoxels.cellValues[I] = velHalf + 0.5 * accVoxels.cellValues[I];
+                        dispVoxels.cellValues[I] += velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I];
 
-                        dispVoxels.cellValues[I] = dispVoxels.cellValues[I] + (velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I]);
-
+                        //velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
                     }
                 }
             }
@@ -480,6 +502,41 @@ namespace Krill
                         }
 
                         stiffnessMod.cellValues[I] += sum;
+                    }
+                }
+            }
+        }
+
+        public double KineticEnergy()
+        {
+            // 0.5 * m * v^2
+
+            double kineticEnergy = 0;
+            for (int k = padding; k < noVoxels - padding; k++)
+            {
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int i = padding; i < noVoxels - padding; i++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        kineticEnergy += velVoxels.cellValues[I].SquareLength;
+                    }
+                }
+            }
+
+            return 0.5 * vol * kineticEnergy;
+        }
+
+        public void ZeroVelocities()
+        {
+            for (int k = padding; k < noVoxels - padding; k++)
+            {
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int i = padding; i < noVoxels - padding; i++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        velVoxels.cellValues[I] = Vector3d.Zero;
                     }
                 }
             }

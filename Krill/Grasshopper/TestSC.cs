@@ -151,7 +151,7 @@ namespace Krill.Grasshopper
                 0x00000100, // mask
                 x => AnalyticalSolutions.SphericalCavity(x, a, sigma, settings.E, 0.25));
             model.SetVolumes();
-
+            model.SetVolumesStiffness();
             conduit.mask = mask;
 
             int n = mask.n;

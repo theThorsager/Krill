@@ -174,9 +174,11 @@ namespace Krill.Grasshopper
             meshToPoints.SetBCD(bc, settings.delta, tag);
             bc.tag = tag;
 
+
             model.SetDirechlets(bc);
             model.startVoxels.SetValues(mask, tag, 0);
             conduit.mask = mask;
+            model.SetVolumesStiffness();
 
             int n = mask.n;
 

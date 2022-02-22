@@ -173,9 +173,10 @@ namespace Krill.Grasshopper
 
             conduit.mask = mask;
 
-            model.SetDensities(settings.delta*settings.Delta, 12);
+            model.SetDensities(settings.delta*settings.Delta, 5);
 
             double residual_scale = 1;
+            double oldKineticE = 0;
             // Make a looop
             for (int i = 0; i < settings.n_timesteps; i++)
             {
@@ -185,6 +186,11 @@ namespace Krill.Grasshopper
                 double c = 0.01; // model.CalculateDampening();
                 model.UpdateDisp(c);
 
+                //double kineticEnergy = model.KineticEnergy();
+                //if (kineticEnergy <= oldKineticE)
+                //model.ZeroVelocities();
+
+                //oldKineticE = kineticEnergy;
                 //System.Threading.Thread.Sleep(100);
 
 
