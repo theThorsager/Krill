@@ -55,8 +55,6 @@ namespace Krill.Grasshopper
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddCurveParameter("curve", "c", "", GH_ParamAccess.list);
-            pManager.AddCurveParameter("strut in truss", "strut", "", GH_ParamAccess.list);
-            // pManager.AddNumberParameter("values for interpolated point", "vals", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -93,8 +91,6 @@ namespace Krill.Grasshopper
     {
         Containers.LinearSolution linearSolution = null;
         List<Polyline> pLine { get; set; } = null;
-        List<Polyline> strutLine { get; set; } = null;
-        // List<double> interMises { get; set; } = null;
         List<Point3d> startPoints { get; set; }
         List<Vector3d> startVectors { get; set; }
         double scaleDelta { get; set; }
@@ -109,33 +105,17 @@ namespace Krill.Grasshopper
             // ...
             ReportProgress(Id, 0);
             pLine = new List<Polyline>();
-            strutLine = new List<Polyline>();
 
-            // interMises = new List<double>();
-
-            OutputResults outputR = new OutputResults(linearSolution.mask, linearSolution.nList, linearSolution.elasticModulus, 0.25, linearSolution.bondStiffness, linearSolution.springs, linearSolution.bodyload);
-            //outputR.UpdateStrains(model.dispVoxels);
+            OutputResults outputR = new OutputResults(linearSolution);
             outputR.UpdateFakeStrains(linearSolution.displacments);
             outputR.UpdateStresses();
-            //outputR.UpdateFakeStress(model.dispVoxels);
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
 
             Voxels<int> startVoxels = linearSolution.mask;
-            //Voxels<Vector3d> dispVoxels = linearSolution.displacments;
             Voxels<Vector3d[]> princpDirections = outputR.princpDir;
-
-            //double pDelta = linearSolution.peridelta;
            
             int n = startVoxels.n;
-            // int[] neighOff = Utility.GetNeighbourOffsets(n, pDelta);
-
-            // Generating principal stresses, setting the elastic modulus to 1 since the actual stresses are not important, only the relation.
-            //OutputResults output = new OutputResults(startVoxels, neighOff, 1, 0.25, );
-            //output.UpdateStrains(dispVoxels);
-            //output.UpdateStresses();
-            //output.UpdateVonMises();
-            //output.UpdatePrincipalStresses();
 
             if (CancellationToken.IsCancellationRequested)
                 return;
@@ -153,25 +133,6 @@ namespace Krill.Grasshopper
 
             if (CancellationToken.IsCancellationRequested)
                 return;
-
-            //for (int i = 0; i < pLine.Count; i++)
-            //{
-            //    if (CancellationToken.IsCancellationRequested)
-            //        return;
-
-            //    PathToTruss strut = new PathToTruss(pLine[i], pLine[i].Length / 30);    // ~30
-            //    strut.ConstructStrutTruss();
-            //    strutLine.Add(strut.trussElement);
-            //}
-
-            if (CancellationToken.IsCancellationRequested)
-                return;
-
-            //for (int i = 0; i < startPoints.Count; i++)
-            //{
-            //    double val = LerpTestMises.interpolatedValue(output.vonMises, startPoints[i]);
-            //    interMises.Add(val);
-            //}
 
             Done();
         }
@@ -206,12 +167,6 @@ namespace Krill.Grasshopper
 
             if (!(pLine is null))
                 DA.SetDataList(0, pLine);
-
-            if (!(strutLine is null))
-                DA.SetDataList(1, strutLine);
-
-            //if (!(interMises is null))
-            //    DA.SetDataList(2, interMises);
         }
     }
 }

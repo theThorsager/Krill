@@ -46,6 +46,14 @@ namespace Krill.Grasshopper
             pManager.AddNumberParameter("StrainXY", "eXY", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("StrainXZ", "eXZ", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("StrainYZ", "eYZ", "", GH_ParamAccess.list);
+
+            pManager.AddVectorParameter("PrincpDir1", "dir1", "", GH_ParamAccess.list);
+            pManager.AddVectorParameter("PrincpDir2", "dir2", "", GH_ParamAccess.list);
+            pManager.AddVectorParameter("PrincpDir3", "dir3", "", GH_ParamAccess.list);
+
+            pManager.AddNumberParameter("PrincpStress1", "s1", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("PrincpStress2", "s2", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("PrincpStress3", "s3", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -63,12 +71,9 @@ namespace Krill.Grasshopper
             linearSolution = res.Value;
 
             // Do work
-            OutputResults outputR = new OutputResults(linearSolution.mask, linearSolution.nList, linearSolution.elasticModulus, 0.25, linearSolution.bondStiffness, linearSolution.springs, linearSolution.bodyload);
-            //outputR.UpdateStrains(model.dispVoxels);
+            OutputResults outputR = new OutputResults(linearSolution);
             outputR.UpdateFakeStrains(linearSolution.displacments);
-            //outputR.UpdateFakeStresses();
             outputR.UpdateStresses();
-            //outputR.UpdateFakeStress(linearSolution.displacments);
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
 
@@ -89,6 +94,14 @@ namespace Krill.Grasshopper
             List<double> strainXY = new List<double>();
             List<double> strainXZ = new List<double>();
             List<double> strainYZ = new List<double>();
+
+            List<Vector3d> dir1 = new List<Vector3d>();
+            List<Vector3d> dir2 = new List<Vector3d>();
+            List<Vector3d> dir3 = new List<Vector3d>();
+
+            List<double> stress1 = new List<double>();
+            List<double> stress2 = new List<double>();
+            List<double> stress3 = new List<double>();
 
             const int maskbit = 0x000000FF;
 
@@ -114,6 +127,14 @@ namespace Krill.Grasshopper
                 strainXY.Add(outputR.strainXY.cellValues[i]);
                 strainXZ.Add(outputR.strainXZ.cellValues[i]);
                 strainYZ.Add(outputR.strainYZ.cellValues[i]);
+
+                dir1.Add(outputR.princpDir.cellValues[i][0]);
+                dir2.Add(outputR.princpDir.cellValues[i][1]);
+                dir3.Add(outputR.princpDir.cellValues[i][2]);
+
+                stress1.Add(outputR.princpStress.cellValues[i].X);
+                stress2.Add(outputR.princpStress.cellValues[i].Y);
+                stress3.Add(outputR.princpStress.cellValues[i].Z);
             }
 
             // Set data
@@ -147,6 +168,20 @@ namespace Krill.Grasshopper
                 DA.SetDataList(12, strainXZ);
             if (strainYZ != null)
                 DA.SetDataList(13, strainYZ);
+
+            if (dir1 != null)
+                DA.SetDataList(14, dir1);
+            if (dir2 != null)
+                DA.SetDataList(15, dir2);
+            if (dir3 != null)
+                DA.SetDataList(16, dir3);
+
+            if (stress1 != null)
+                DA.SetDataList(17, stress1);
+            if (stress2 != null)
+                DA.SetDataList(18, stress2);
+            if (stress3 != null)
+                DA.SetDataList(19, stress3);
         }
 
         /// <summary>

@@ -44,17 +44,18 @@ namespace Krill
         public Voxels<Vector3d[]> princpDir;
         public Voxels<Matrix> strain;
 
-        public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs, Voxels<Vector3d> bodyload)
+        //public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs, Voxels<Vector3d> bodyload)
+        public OutputResults(Containers.LinearSolution linSol, double PoissonsRatio = 0.25)
         {
-            this.startVoxels = startVoxels;
-            this.bodyload = bodyload;
-            this.nList = nList;
+            this.startVoxels = linSol.mask;
+            this.bodyload = linSol.bodyload;
+            this.nList = linSol.nList;
 
-            E = ElasticModulus;
+            E = linSol.elasticModulus;
             nu = PoissonsRatio;
 
-            this.bond_stiffness = bond_stiffness;
-            this.springs = springs;
+            this.bond_stiffness = linSol.bondStiffness;
+            this.springs = linSol.springs;
 
             noVoxels = startVoxels.n * startVoxels.n * startVoxels.n;
             noBonds = nList.Length * 2;     // *2 because the way the neigbour list is constructed

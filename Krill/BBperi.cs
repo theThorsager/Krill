@@ -196,7 +196,13 @@ namespace Krill
 
         public void RemoveUnstressedVoxels(double factor, double E)
         {
-            OutputResults vonMises = new OutputResults(startVoxels, nlist, E, 0.25, bond_stiffness, spring, bodyload);
+
+            OutputResults vonMises = new OutputResults(new Containers.LinearSolution() { mask = startVoxels,
+                                                                                         bodyload = this.bodyload,
+                                                                                         nList = this.nlist,
+                                                                                         elasticModulus = E,
+                                                                                         bondStiffness = bond_stiffness,
+                                                                                         springs = this.spring } );
 
             vonMises.UpdateStrains(dispVoxels);
             vonMises.UpdateStresses();
