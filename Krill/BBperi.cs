@@ -131,7 +131,7 @@ namespace Krill
 
                         Vector3d disp = dispVoxels.cellValues[I];
 
-                        nominator += disp.X * disp.X * Math.Abs(K.X) + disp.Y * disp.Y * Math.Abs(K.Y) + disp.Z * disp.Z * Math.Abs(K.Z);
+                        nominator += disp.X * disp.X * (K.X) + disp.Y * disp.Y * (K.Y) + disp.Z * disp.Z * (K.Z);
                         denominator += disp * disp;
                     }
                 }
@@ -279,18 +279,18 @@ namespace Krill
                         accVoxels.cellValues[I].Y /= densities.cellValues[I].Y;
                         accVoxels.cellValues[I].Z /= densities.cellValues[I].Z;
 
-                        //accVoxels.cellValues[I] -= c * velVoxels.cellValues[I];
-                        //velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
+                        accVoxels.cellValues[I] -= c * velVoxels.cellValues[I];
+                        velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
 
                         dispVoxels.cellValues[I] += velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I];
 
-                        //velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
+                        velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
                     }
                 }
             }
         }
 
-        public double ComputeResidual()
+        public double ComputeResidual(double F)
         {
             // residual of our equations
             double R = forceVoxels.cellValues.Sum(x =>
@@ -307,16 +307,14 @@ namespace Krill
 
             // scale with "force" in the system
             // Average displacement * stiffness ? :)
-            double F = 0;
             for (int i = 0; i < noVoxels*noVoxels*noVoxels; i++)
             {
                 if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
 
-                F += dispVoxels.cellValues[i].Length;
                 ++n;
             }
-            F *= bond_stiffness / n;
+            //F *= bond_stiffness / n;
             
             F = Math.Max(0.001, F);
 
@@ -324,6 +322,51 @@ namespace Krill
             R /= (double)n;
 
             return R / F;
+        }
+
+        public double ComputeF(List<IBoundaryCondition> bcs, double E)
+        {
+            double CharesteristicStiffness = E;
+
+            Vector3d totalVec = new Vector3d();
+            double absoluteForce = 0;
+
+            foreach (IBoundaryCondition bc in bcs)
+            {
+                if (bc is BoundaryConditionDirechlet bcD)
+                {
+                    var areae = AreaMassProperties.Compute(bcD.area);
+                    absoluteForce += bcD.displacement.Length * CharesteristicStiffness * areae.Area;
+                    if (bcD.normal)
+                    {
+                        int count = bcD.area.FaceNormals.Count;
+                        for (int i = 0; i < count; ++i)
+                        {
+                            totalVec += (Vector3d)bcD.area.FaceNormals[i] * bcD.displacement.Z * CharesteristicStiffness * areae.Area / count;
+                        }
+                    }
+                    else
+                    {
+                        totalVec += bcD.displacement * CharesteristicStiffness * areae.Area;
+                    }
+                }
+                else if (bc is BoundaryConditionNuemann bcN)
+                {
+                    absoluteForce += bcN.load.Length;
+                    if (bcN.normal)
+                    {
+                        int count = bcN.area.FaceNormals.Count; 
+                        for (int i = 0; i < count; ++i)
+                        {
+                            totalVec += (Vector3d)bcN.area.FaceNormals[i] * bcN.load.Z / count;
+                        }
+                    }
+                    else
+                        totalVec += bcN.load;
+                }
+            }
+
+            return absoluteForce - totalVec.Length;
         }
 
         public void SetNuemann(BoundaryConditionNuemann bc, int tag)
@@ -420,39 +463,23 @@ namespace Krill
         private Vector3d setDirechlet(int i, int j, BoundaryConditionDirechlet bc, ref int sum)
         {
             // Find how much of this vector that is in deformable volume
-            // TODO!!
             Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
             double t = Rhino.Geometry.Intersect.Intersection.MeshRay(bc.area, new Ray3d(startVoxels.IndexToPoint(i), xi_vec));
             if (t < 0)
                 return Vector3d.Zero;
 
             sum++;
-            xi_vec *= t;    // new start length
+            xi_vec *= t;
 
-            double length = xi_vec.Length;
-            double h = 1e-6;
+            double l = xi_vec.Length;
+            stiffnessMod.cellValues[i] += l;
 
-            stiffnessMod.cellValues[i] += length;
+            xi_vec.X *= xi_vec.X;
+            xi_vec.Y *= xi_vec.Y;
+            xi_vec.Z *= xi_vec.Z;
+            xi_vec *= bond_stiffness * vol / (l * l * l);
 
-            double sx = ((xi_vec + h * Vector3d.XAxis).Length - length) / length;
-            Vector3d sx_vec = sx * xi_vec / length;
-            sx_vec *= bond_stiffness * vol / h;
-            double sy = ((xi_vec + h * Vector3d.YAxis).Length - length) / length;
-            Vector3d sy_vec = sy * xi_vec / length;
-            sy_vec *= bond_stiffness * vol / h;
-            double sz = ((xi_vec + h * Vector3d.ZAxis).Length - length) / length;
-            Vector3d sz_vec = sz * xi_vec / length;
-            sz_vec *= bond_stiffness * vol / h;
-
-            // split up for all cardinal directions
-            double lx = sx_vec.X < 0 ? -sx_vec.X : sx_vec.X;
-            double fx = -lx;
-            double ly = sy_vec.Y < 0 ? -sy_vec.Y : sy_vec.Y;
-            double fy = -ly;
-            double lz = sz_vec.Z < 0 ? -sz_vec.Z : sz_vec.Z;
-            double fz = -lz;
-
-            return new Vector3d(fx, fy, fz);
+            return -xi_vec;
         }
 
         public void SetVolumes()

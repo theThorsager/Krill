@@ -173,47 +173,43 @@ namespace Krill.Grasshopper
 
             conduit.mask = mask;
 
-            model.SetDensities(settings.delta*settings.Delta, 5);
+            model.SetDensities(settings.delta*settings.Delta, 6);
+
+            double F = model.ComputeF(BCs, settings.E);
 
             double residual_scale = 1;
-            double oldKineticE = 0;
             // Make a looop
             for (int i = 0; i < settings.n_timesteps; i++)
             {
                 // compute the acceleration
-                model.UpdateForce(Math.Min((double) (i+1.0) / 200, 1));
+                model.UpdateForce(Math.Min((double) (i+1.0) / 50, 1));
                 // Verlet integration, to update pos
-                double c = 0.01; // model.CalculateDampening();
+                //double c = 0.00;
+                double c = model.CalculateDampening();
                 model.UpdateDisp(c);
 
-                //double kineticEnergy = model.KineticEnergy();
-                //if (kineticEnergy <= oldKineticE)
-                //model.ZeroVelocities();
-
-                //oldKineticE = kineticEnergy;
                 //System.Threading.Thread.Sleep(100);
 
-
-                //double residual = model.ComputeResidual();
+                double residual = model.ComputeResidual(F);
                 if (i % 10 == 0)
                 {
                     if (CancellationToken.IsCancellationRequested) return;
 
                     conduit.SetDisplacments(model.dispVoxels);
                     conduit.Update();
-                    //if (i == 0)
-                    //{
-                    //    residual_scale = Math.Log(residual);
-                    //    ReportProgress(Id, 0);
-                    //}
-                    //else
-                    //    ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol);
+                    if (i == 0)
+                    {
+                        residual_scale = Math.Log(residual);
+                        ReportProgress(Id, 0);
+                    }
+                    else
+                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol);
                 }
-                ReportProgress(Id, (double)i / settings.n_timesteps);
+                //ReportProgress(Id, (double)i / settings.n_timesteps);
 
                 // Check termination criteria
-                //if (residual < tolerance)
-                //    break;
+                if (residual < tolerance)
+                    break;
             }
 
             // Display data
