@@ -63,11 +63,12 @@ namespace Krill.Grasshopper
             linearSolution = res.Value;
 
             // Do work
-            OutputResults outputR = new OutputResults(linearSolution.mask, linearSolution.nList, linearSolution.elasticModulus, 0.25, linearSolution.bondStiffness, linearSolution.springs);
+            OutputResults outputR = new OutputResults(linearSolution.mask, linearSolution.nList, linearSolution.elasticModulus, 0.25, linearSolution.bondStiffness, linearSolution.springs, linearSolution.bodyload);
             //outputR.UpdateStrains(model.dispVoxels);
             outputR.UpdateFakeStrains(linearSolution.displacments);
+            //outputR.UpdateFakeStresses();
             outputR.UpdateStresses();
-            //outputR.UpdateFakeStress(model.dispVoxels);
+            //outputR.UpdateFakeStress(linearSolution.displacments);
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
 

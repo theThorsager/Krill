@@ -113,7 +113,7 @@ namespace Krill.Grasshopper
 
             // interMises = new List<double>();
 
-            OutputResults outputR = new OutputResults(linearSolution.mask, linearSolution.nList, linearSolution.elasticModulus, 0.25, linearSolution.bondStiffness, linearSolution.springs);
+            OutputResults outputR = new OutputResults(linearSolution.mask, linearSolution.nList, linearSolution.elasticModulus, 0.25, linearSolution.bondStiffness, linearSolution.springs, linearSolution.bodyload);
             //outputR.UpdateStrains(model.dispVoxels);
             outputR.UpdateFakeStrains(linearSolution.displacments);
             outputR.UpdateStresses();
@@ -154,15 +154,15 @@ namespace Krill.Grasshopper
             if (CancellationToken.IsCancellationRequested)
                 return;
 
-            for (int i = 0; i < pLine.Count; i++)
-            {
-                if (CancellationToken.IsCancellationRequested)
-                    return;
+            //for (int i = 0; i < pLine.Count; i++)
+            //{
+            //    if (CancellationToken.IsCancellationRequested)
+            //        return;
 
-                PathToTruss strut = new PathToTruss(pLine[i], pLine[i].Length / 30);    // ~30
-                strut.ConstructStrutTruss();
-                strutLine.Add(strut.trussElement);
-            }
+            //    PathToTruss strut = new PathToTruss(pLine[i], pLine[i].Length / 30);    // ~30
+            //    strut.ConstructStrutTruss();
+            //    strutLine.Add(strut.trussElement);
+            //}
 
             if (CancellationToken.IsCancellationRequested)
                 return;

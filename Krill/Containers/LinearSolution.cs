@@ -19,5 +19,6 @@ namespace Krill.Containers
         public int[] nList { get; set; } = null;
         public double bondStiffness { get; set; } = 0;
         public Voxels<Vector3d> springs { get; set; } = null;
+        public Voxels<Vector3d> bodyload { get; set; } = null;
     }
 }

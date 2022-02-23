@@ -35,7 +35,7 @@ namespace Krill
         public void ConstructLoadPath(double scaleStep)
         {
 
-            int maxNoStep = (int)1e6;   // Max number of steps
+            int maxNoStep = (int)1e4;   // Max number of steps
 
             Vector3d moveVec = startVec;
             moveVec.Unitize();
@@ -46,8 +46,8 @@ namespace Krill
 
             pathPts.Add(x1);
 
-            x1 += step * moveVec;
-            pathPts.Add(x1);
+            //x1 += step * moveVec;
+            //pathPts.Add(x1);
 
             for (int i = 0; i < maxNoStep; i++)
             {

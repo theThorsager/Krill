@@ -195,7 +195,7 @@ namespace Krill.Grasshopper
 
 
                 //double residual = model.ComputeResidual();
-                if (i % 1 == 0)
+                if (i % 10 == 0)
                 {
                     if (CancellationToken.IsCancellationRequested) return;
 
@@ -222,7 +222,8 @@ namespace Krill.Grasshopper
 
             solution = new Param.LinearSolutionGoo(
                 new LinearSolution() { mask = model.startVoxels, displacments = model.dispVoxels, peridelta = settings.delta, 
-                    elasticModulus = settings.E, bondStiffness = settings.bond_stiffness, nList = model.nlist, springs = model.spring });
+                    elasticModulus = settings.E, bondStiffness = settings.bond_stiffness, nList = model.nlist, springs = model.spring,
+                bodyload = model.bodyload});
               
                 Done();
         }
