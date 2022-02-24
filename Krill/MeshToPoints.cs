@@ -173,7 +173,7 @@ namespace Krill
                 foreach (int i in indecies)
                 {
                     Point3d p = voxels.IndexToPoint(i);
-                    for (int j = 0; j < voxels.delta * delta / del; j++)
+                    for (int j = (int)-(voxels.delta * delta / del); j < voxels.delta * delta / del; j++)
                     {
                         pts.Add(p + normal * j);
                     }
@@ -184,9 +184,7 @@ namespace Krill
                 foreach (Point3d pt in pts)
                 {
                     int i = voxels.PointToIndex(pt);
-                    if (voxels.cellValues[i] == 0)
-                        voxels.cellValues[i] = newvalue;
-
+                    voxels.cellValues[i] |= newvalue;
                 }
             }
         }
@@ -204,7 +202,7 @@ namespace Krill
         {
             Mesh temp = mesh;
             mesh = bc.area;
-            FillBoundaryValues(val);
+            FillBoundaryValuesBC(val, this.voxels.delta);
 
             mesh = temp;
         }

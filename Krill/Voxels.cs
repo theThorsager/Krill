@@ -33,6 +33,17 @@ namespace Krill
             }
         }
 
+        public static void MaskValues(Voxels<int> mask, int maskbit)
+        {
+            for (int i = 0; i < mask.cellValues.Length; i++)
+            {
+                if ((mask.cellValues[i] & maskbit) != 0)
+                {
+                    mask.cellValues[i] &= ~maskbit;
+                }
+            }
+        }
+
         public List<Point3d> GetPointsAt(T val)
         {
             List<Point3d> result = new List<Point3d>();

@@ -140,10 +140,10 @@ namespace Krill
             nominator = nominator > 0 ? nominator : -nominator;
             double c = 2.0 * Math.Sqrt(nominator / denominator);
 
-            return Math.Min(c, 1.0);
+            return Double.IsNaN(c) ? 0.01 : Math.Min(c, 1.0);
         }
 
-        public void SetDensities(double delta, double factor = 24)
+        public void SetDensities(double delta, double factor = 20)
         {
             int noBonds = nlist.Length;
 
@@ -189,7 +189,10 @@ namespace Krill
             xi_vec.X *= xi_vec.X;
             xi_vec.Y *= xi_vec.Y;
             xi_vec.Z *= xi_vec.Z;
-            xi_vec *= bond_stiffness * vol / (l*l*l);
+            int vols = startVoxels.cellValues[i] >> 20;
+            vols += startVoxels.cellValues[j] >> 20;
+            double factor = (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
+            xi_vec *= factor * bond_stiffness * vol / (l*l*l);
 
             densities.cellValues[i] += xi_vec;
         }
@@ -221,8 +224,8 @@ namespace Krill
 
         void CalcBondForce(int i, int j, double factor)
         {
-            int vols = startVoxels.cellValues[i] >> 24;
-            vols += startVoxels.cellValues[j] >> 24;
+            int vols = startVoxels.cellValues[i] >> 20;
+            vols += startVoxels.cellValues[j] >> 20;
             factor *= (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
 
             //factor *= (1.0 / stiffnessMod.cellValues[i] + 1.0 / stiffnessMod.cellValues[j]) * 0.5;
@@ -409,7 +412,7 @@ namespace Krill
                     for (int i = padding; i < noVoxels - padding; i++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if ((startVoxels.cellValues[I] & maskbit) == 0)
+                        if ((startVoxels.cellValues[I] & maskbit) == 0 || (startVoxels.cellValues[I] & bc.tag) == 0)
                             continue;
 
                         SetDirechlet(I, bc);
@@ -425,7 +428,7 @@ namespace Krill
             var resBodyLoad = new Vector3d();
             var resSpringConstant = new Vector3d();
 
-            int sum = startVoxels.cellValues[i] >> 24;
+            int sum = startVoxels.cellValues[i] >> 20;
             int localsum = 0;
             bc.area.ClosestPoint(startVoxels.IndexToPoint(i), out Point3d trash, out Vector3d normal, padding * startVoxels.delta * 0.87 * 2 /* sqrt(3)/2 */);
             for (int j = 0; j < this.nlist.Length; j++)
@@ -442,8 +445,8 @@ namespace Krill
                 // Sum for springs in parallel
 
             }
-            startVoxels.cellValues[i] &= ~(0xFFF << 24);
-            startVoxels.cellValues[i] |= ((sum + localsum) << 24);
+            startVoxels.cellValues[i] &= ~(0xFFFFF << 20);
+            startVoxels.cellValues[i] |= ((sum + localsum) << 20);
 
             resSpringConstant.X *= bc.lockX ? 1 : 0;
             resSpringConstant.Y *= bc.lockY ? 1 : 0;
@@ -477,7 +480,11 @@ namespace Krill
             xi_vec.X *= xi_vec.X;
             xi_vec.Y *= xi_vec.Y;
             xi_vec.Z *= xi_vec.Z;
-            xi_vec *= bond_stiffness * vol / (l * l * l);
+            int vols = startVoxels.cellValues[i] >> 20;
+            vols += startVoxels.cellValues[j] >> 20;
+            double factor = (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
+
+            xi_vec *= factor * bond_stiffness * vol / (l * l * l);
 
             return -xi_vec;
         }
@@ -505,7 +512,7 @@ namespace Krill
                                 ++sum;
                         }
 
-                        startVoxels.cellValues[I] |= sum << 24;
+                        startVoxels.cellValues[I] |= sum << 20;
                     }
                 }
             }

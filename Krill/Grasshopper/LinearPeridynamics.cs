@@ -172,20 +172,22 @@ namespace Krill.Grasshopper
                 if (bc is BoundaryConditionDirechlet bcD)
                 {
                     count++;
-                    int tag = count << 8;
+                    int tag = 4 << 8;
                     meshToPoints.SetBCD(bcD, settings.delta, tag);
                     bcD.tag = tag;
                     model.SetDirechlets(bcD);
-                    model.startVoxels.SetValues(mask, tag, 0);
+                    //model.startVoxels.SetValues(mask, tag, 0);
+                    Voxels<int>.MaskValues(mask, tag);
                 }
                 else if (bc is BoundaryConditionNuemann bcN)
                 {
                     count++;
-                    int tag = count << 2;
+                    int tag = 1 << 2;
                     meshToPoints.SetBCN(bcN, tag);
                     model.SetNuemann(bcN, tag);
                     // removing the tag should not be needed :)
-                    model.startVoxels.SetValues(mask, tag, 1);
+                    Voxels<int>.MaskValues(mask, tag);
+                    //model.startVoxels.SetValues(mask, tag, 1);
                 }
                 else
                 {
@@ -200,7 +202,7 @@ namespace Krill.Grasshopper
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
 
-            model.SetDensities(settings.delta*settings.Delta, 6);
+            model.SetDensities(settings.delta*settings.Delta, 5);
 
             double F = model.ComputeF(BCs, settings.E);
 

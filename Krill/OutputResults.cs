@@ -108,8 +108,8 @@ namespace Krill
                         bondCount += 1;
 
                         CalcStretchAndNormal(dispVoxels, i, j, out double s, out Vector3d n);
-                        int vols = startVoxels.cellValues[i] >> 24;
-                        vols += startVoxels.cellValues[j] >> 24;
+                        int vols = startVoxels.cellValues[i] >> 20;
+                        vols += startVoxels.cellValues[j] >> 20;
                         double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
                         s *= bond_stiffness * vol;
                         S[ii, 0] = s;
@@ -128,8 +128,8 @@ namespace Krill
                         bondCount += 1;
 
                         CalcStretchAndNormal(dispVoxels, i, j, out double s, out Vector3d n);
-                        int vols = startVoxels.cellValues[i] >> 24;
-                        vols += startVoxels.cellValues[j] >> 24;
+                        int vols = startVoxels.cellValues[i] >> 20;
+                        vols += startVoxels.cellValues[j] >> 20;
                         double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
                         s *= bond_stiffness * vol;
                         S[noBonds / 2 + ii, 0] = s;
@@ -257,8 +257,8 @@ namespace Krill
 
                 double factorA = 1;
                 double factorS = 1;
+                int dirBonds = (startVoxels.cellValues[i] >> 20) - bondCount;
 
-                int dirBonds = (startVoxels.cellValues[i] >> 24) - bondCount;
 
                 //factorA = dirBonds;
                 //factorS = 1.0 * startVoxels.delta;
@@ -592,8 +592,8 @@ namespace Krill
                 Vector3d xi = startVoxels.IndexToPoint(jj) - startVoxels.IndexToPoint(i);
                 double xiL = xi.Length;
 
-                int vols = startVoxels.cellValues[i] >> 24;
-                vols += startVoxels.cellValues[jj] >> 24;
+                int vols = startVoxels.cellValues[i] >> 20;
+                vols += startVoxels.cellValues[jj] >> 20;
                 double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
                 c[j, 0] = bond_stiffness * factorS;
 
@@ -618,8 +618,8 @@ namespace Krill
                 Vector3d xi = startVoxels.IndexToPoint(jj) - startVoxels.IndexToPoint(i);
                 double xiL = xi.Length;
 
-                int vols = startVoxels.cellValues[i] >> 24;
-                vols += startVoxels.cellValues[jj] >> 24;
+                int vols = startVoxels.cellValues[i] >> 20;
+                vols += startVoxels.cellValues[jj] >> 20;
                 double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
                 c[nList.Length + j, 0] = bond_stiffness * factorS;
 
