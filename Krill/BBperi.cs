@@ -374,7 +374,7 @@ namespace Krill
 
         public void SetNuemann(BoundaryConditionNuemann bc, int tag)
         {
-            int tot = startVoxels.cellValues.Count(x => (x & tag) != 0);
+            int tot = startVoxels.cellValues.Count(x => (x & tag) != 0 && (x & 3) != 0);
 
             for (int k = padding; k < noVoxels - padding; k++)
             {
@@ -383,7 +383,7 @@ namespace Krill
                     for (int i = padding; i < noVoxels - padding; i++)
                     {
                         int I = startVoxels.ToLinearIndex(i, j, k);
-                        if ((startVoxels.cellValues[I] & tag) == 0)
+                        if ((startVoxels.cellValues[I] & tag) == 0 || (startVoxels.cellValues[I] & 3) == 0)
                             continue;
 
                         Vector3d load = bc.load;

@@ -40,18 +40,20 @@ namespace Krill.Grasshopper
             } 
         }
 
+        bool WasHidden = false;
         public override void DocumentContextChanged(GH_Document document, GH_DocumentContext context)
         {
             base.DocumentContextChanged(document, context);
 
             switch (context)
             {
-                case GH_DocumentContext.Open:
                 case GH_DocumentContext.Loaded:
-                    Hidden = false;
+                case GH_DocumentContext.Open:
+                    Hidden = WasHidden;
                     break;
                 case GH_DocumentContext.Close:
                 case GH_DocumentContext.Unloaded:
+                    WasHidden = Hidden;
                     Hidden = true;
                     break;
                 case GH_DocumentContext.Lock:
@@ -182,7 +184,7 @@ namespace Krill.Grasshopper
                 else if (bc is BoundaryConditionNuemann bcN)
                 {
                     count++;
-                    int tag = 1 << 2;
+                    int tag = 1 << 3;
                     meshToPoints.SetBCN(bcN, tag);
                     model.SetNuemann(bcN, tag);
                     // removing the tag should not be needed :)
