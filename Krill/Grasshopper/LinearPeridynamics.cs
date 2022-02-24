@@ -20,7 +20,7 @@ namespace Krill.Grasshopper
               "Description",
               "Krill", "Solvers")
         {
-            BaseWorker = new LinearPeridynamicsWorker(null);
+            BaseWorker = new LinearPeridynamicsWorker(null, this);
         }
 
         public override void RemovedFromDocument(GH_Document document)
@@ -38,6 +38,29 @@ namespace Krill.Grasshopper
                     this.RequestCancellation();
                 base.Locked = value; 
             } 
+        }
+
+        public override void DocumentContextChanged(GH_Document document, GH_DocumentContext context)
+        {
+            base.DocumentContextChanged(document, context);
+
+            switch (context)
+            {
+                case GH_DocumentContext.Open:
+                case GH_DocumentContext.Loaded:
+                    Hidden = false;
+                    break;
+                case GH_DocumentContext.Close:
+                case GH_DocumentContext.Unloaded:
+                    Hidden = true;
+                    break;
+                case GH_DocumentContext.Lock:
+                case GH_DocumentContext.Unlock:
+                case GH_DocumentContext.None:
+                case GH_DocumentContext.Unknown:
+                default:
+                    break;
+            }
         }
 
         /// <summary>
@@ -99,7 +122,7 @@ namespace Krill.Grasshopper
         VoxelConduit conduit { get; set; }
 
         Param.LinearSolutionGoo solution { get; set; } = null;
-        public LinearPeridynamicsWorker(VoxelConduit vcon) : base(null)
+        public LinearPeridynamicsWorker(VoxelConduit vcon, GH_Component parent) : base(null)
         {
             if (vcon is null)
                 conduit = new VoxelConduit();
@@ -107,6 +130,7 @@ namespace Krill.Grasshopper
                 conduit = vcon;
 
             conduit.Enabled = true;
+            Parent = parent;
         }
 
         public override void DoWork(Action<string, double> ReportProgress, Action Done)
@@ -172,6 +196,9 @@ namespace Krill.Grasshopper
             model.SetVolumesStiffness();
 
             conduit.mask = mask;
+            conduit.component = Parent;
+            conduit.SetDisplacments(model.dispVoxels);
+            conduit.Update();
 
             model.SetDensities(settings.delta*settings.Delta, 6);
 
@@ -224,7 +251,7 @@ namespace Krill.Grasshopper
                 Done();
         }
 
-        public override WorkerInstance Duplicate() => new LinearPeridynamicsWorker(conduit);
+        public override WorkerInstance Duplicate() => new LinearPeridynamicsWorker(conduit, Parent);
 
         public override void GetData(IGH_DataAccess DA, GH_ComponentParamServer Params)
         {

@@ -13,6 +13,7 @@ using Rhino.Input;
 using Rhino.Input.Custom;
 using Rhino.DocObjects;
 using Rhino.Display;
+using Grasshopper.Kernel;
 
 namespace Krill
 {
@@ -20,6 +21,7 @@ namespace Krill
     {
         // define a local copy of all geometry which is to be redrawn
         public Voxels<int> mask { get; set; } = null;
+        public GH_Component component { get; set; } = null;
         public void SetDisplacments(Voxels<Vector3d> disp)
         {
             points = Voxels<bool>.GetPoints(mask, disp, 10);
@@ -34,6 +36,9 @@ namespace Krill
         protected override void CalculateBoundingBox(CalculateBoundingBoxEventArgs e)
         {
             base.CalculateBoundingBox(e);
+
+            if (component == null) return;
+            if (component.Hidden) return;
 
             if (mask is null)
                 return;
@@ -56,6 +61,9 @@ namespace Krill
         protected override void PreDrawObjects(DrawEventArgs e)
         {
             base.PreDrawObjects(e);
+
+            if (component == null) return;
+            if (component.Hidden) return;
 
             if (mask is null)
                 return;
