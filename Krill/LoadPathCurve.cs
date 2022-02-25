@@ -85,6 +85,77 @@ namespace Krill
             loadPath = new Polyline(pathPts);
         }
 
+        public bool SecondaryLoadPath(double scaleStep, double tolerance, List<Point3d> nodes, out int index)
+        {
+            int maxNoStep = (int)1e4;   // Max number of steps
+
+            index = 1000;
+
+            Vector3d moveVec = startVec;
+            moveVec.Unitize();
+            Point3d x1 = startPt;
+            List<Point3d> pathPts = new List<Point3d>();
+
+            double step = d * scaleStep;
+
+            pathPts.Add(x1);
+
+            x1 += 2 * step * moveVec;
+
+            pathPts.Add(x1);
+
+            tolerance *= tolerance;
+
+            for (int i = 0; i < maxNoStep; i++)
+            {
+                Vector3d oldVec = moveVec;
+                bool endCond;
+                Point3d x0 = x1;
+                Vector3d dfx0 = CLKFilterLinearMoveVec(x0, oldVec, out endCond);
+                Vector3d aveDf = dfx0;
+
+                Vector3d oldAveDf;
+
+                for (int j = 0; j < 10; j++)
+                {
+                    x1 = x0 + step * aveDf;
+                    Vector3d dfx1 = CLKFilterLinearMoveVec(x1, oldVec, out endCond);
+                    oldAveDf = aveDf;
+                    aveDf = (dfx0 + dfx1) * 0.5;
+
+                    if (j == 9)
+                        break;
+
+                    if ((aveDf - oldAveDf).SquareLength < 1e-18)
+                        break;
+                }
+
+                moveVec = aveDf;
+
+                x1 = x0 + step * moveVec;
+
+                pathPts.Add(x1);
+
+                for (int j = 0; j < nodes.Count; j++)
+                {
+                    if (x1.DistanceToSquared(nodes[j]) < tolerance && startPt.DistanceToSquared(nodes[j]) > tolerance)
+                    {
+                        index = j;
+                        loadPath = new Polyline(pathPts);
+                        return true;
+                    }
+                }
+
+                if (endCond)
+                {
+                    loadPath = new Polyline(pathPts);
+                    return false;
+                }                    
+            }
+            loadPath = new Polyline(pathPts);
+            return false;
+        }
+
         private Vector3d CLKFilterLinearMoveVec(Point3d pos, Vector3d previousDir, out bool basicEnd)
         {
             Vector3d dir = new Vector3d();
