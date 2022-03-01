@@ -54,7 +54,11 @@ namespace Krill.Grasshopper
             DA.GetData(1, ref n);
 
             Krill.DualCurve.ReduceToMinimumCurvature(pline, out List<Point3d> points, out List<Vector3d> tangents);
-            Polyline resB = Krill.DualCurve.ConstructDualCurve(points, tangents);
+            Polyline resB;
+            if (points.Count > 1)
+                resB = Krill.DualCurve.ConstructDualCurve(points, tangents);
+            else
+                resB = new Polyline(new List<Point3d> { pline[0], pline[pline.Count - 1] });
 
             resB = Krill.DualCurve.ReduceCurve(resB, Math.PI / 180 * 12.5);
 
