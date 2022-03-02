@@ -20,5 +20,7 @@ namespace Krill.Containers
         public double bondStiffness { get; set; } = 0;
         public Voxels<Vector3d> springs { get; set; } = null;
         public Voxels<Vector3d> bodyload { get; set; } = null;
+        public Voxels<double> utilization { get; set; } = null;
+        public Voxels<double> weighting { get; set; } = null;
     }
 }

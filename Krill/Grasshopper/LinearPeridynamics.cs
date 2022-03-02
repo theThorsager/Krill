@@ -204,44 +204,122 @@ namespace Krill.Grasshopper
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
 
-            model.SetDensities(settings.delta*settings.Delta, 5);
+            model.SetDensities(settings.delta*settings.Delta, 10);
 
             double F = model.ComputeF(BCs, settings.E);
 
-            double residual_scale = 1;
-            // Make a looop
-            for (int i = 0; i < settings.n_timesteps; i++)
+            // Load Stepping
+            const int n_load_stepping = 50;
+            int i = 0;
+            for ( ; i < n_load_stepping; i++)
             {
                 // compute the acceleration
-                model.UpdateForce(Math.Min((double) (i+1.0) / 50, 1));
+                model.UpdateForce(Math.Min((double)(i + 1.0) / n_load_stepping, 1));
                 // Verlet integration, to update pos
-                //double c = 0.00;
                 double c = model.CalculateDampening();
                 model.UpdateDisp(c);
 
-                //System.Threading.Thread.Sleep(100);
-
-                double residual = model.ComputeResidual(F);
                 if (i % 10 == 0)
                 {
                     if (CancellationToken.IsCancellationRequested) return;
 
                     conduit.SetDisplacments(model.dispVoxels);
                     conduit.Update();
-                    if (i == 0)
+                }
+                ReportProgress(Id, (double)i / n_load_stepping);
+            }
+
+            double residual_scale = 1;
+            // Try to converge
+            for ( ; i < settings.n_timesteps; i++)
+            {
+                // compute the acceleration
+                model.UpdateForce();
+                // Verlet integration, to update pos
+                double c = model.CalculateDampening();
+                model.UpdateDisp(c);
+
+                double residual = model.ComputeResidual(F);
+                if (i % 10 == n_load_stepping % 10)
+                {
+                    if (CancellationToken.IsCancellationRequested) return;
+
+                    conduit.SetDisplacments(model.dispVoxels);
+                    conduit.Update();
+                    if (i == n_load_stepping)
                     {
                         residual_scale = Math.Log(residual);
                         ReportProgress(Id, 0);
                     }
                     else
-                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol);
+                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / (logtol - residual_scale));
                 }
-                //ReportProgress(Id, (double)i / settings.n_timesteps);
-
                 // Check termination criteria
                 if (residual < tolerance)
                     break;
             }
+
+            // Try to converge with relaxing of tension
+            ReportProgress(Id, 0);
+            model.relaxTension = true;
+            for (; i < settings.n_timesteps; i++)
+            {
+                // compute the acceleration
+                model.UpdateForce();
+                // Verlet integration, to update pos
+                double c = model.CalculateDampening();
+                model.UpdateDisp(c * 0.5);
+
+                double residual = model.ComputeResidual(F);
+                if (i % 10 == n_load_stepping % 10)
+                {
+                    if (CancellationToken.IsCancellationRequested) return;
+
+                    conduit.SetDisplacments(model.dispVoxels);
+                    conduit.Update();
+                    ReportProgress(Id, (Math.Log(residual) - residual_scale) / (logtol - residual_scale));
+                }
+                // Check termination criteria
+                if (residual < tolerance)
+                    break;
+            }
+
+            //double totDisp = double.MaxValue;
+            //ReportProgress(Id, 0);
+            //// Modify Weights
+            //for ( ; i < settings.n_timesteps; i++)
+            //{
+            //    // compute the acceleration
+            //    model.UpdateForce();
+            //    // Verlet integration, to update pos
+            //    double c = model.CalculateDampening();
+            //    model.UpdateDisp(c);
+
+            //    double residual = model.ComputeResidual(F);
+
+            //    //if (residual < tolerance)
+            //    if (i % 10 == 0)
+            //    {
+            //        double oldtotDisp = totDisp;
+            //        totDisp = model.TotalDisplacement();
+
+            //        // If the change has not made the structure stiffer, break
+            //        if (totDisp > oldtotDisp * 1.001)
+            //            break;
+
+            //        model.ModifyWeightsUti();
+
+            //        ReportProgress(Id, totDisp);
+            //    }
+
+            //    if (i % 10 == 0)
+            //    {
+            //        if (CancellationToken.IsCancellationRequested) return;
+
+            //        conduit.SetDisplacments(model.dispVoxels);
+            //        conduit.Update();
+            //    }
+            //}
 
             // Display data
             conduit.SetDisplacments(model.dispVoxels);
@@ -250,7 +328,7 @@ namespace Krill.Grasshopper
             solution = new Param.LinearSolutionGoo(
                 new LinearSolution() { mask = model.startVoxels, displacments = model.dispVoxels, peridelta = settings.delta, 
                     elasticModulus = settings.E, bondStiffness = settings.bond_stiffness, nList = model.nlist, springs = model.spring,
-                bodyload = model.bodyload});
+                bodyload = model.bodyload, utilization = model.utilization, weighting = model.weighting });
               
                 Done();
         }

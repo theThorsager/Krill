@@ -31,7 +31,15 @@ namespace Krill
 
         public Voxels<double> stiffnessMod;
 
+        public Voxels<double> weighting;
+        int N;
+        public Voxels<double> utilization;
+
         private int noVoxels;
+
+        public bool relaxTension = false;
+        double oldcuttoff = 0;
+        double newcuttoff = 0;
 
         public BBperi(Voxels<int> orgVoxels, double Bond_stiffness, int[] neighbour_list,
             double volume, double delta)
@@ -54,10 +62,29 @@ namespace Krill
             bodyload = new Voxels<Vector3d>(startVoxels.origin, startVoxels.delta, noVoxels);
             
             stiffnessMod = new Voxels<double>(startVoxels.origin, startVoxels.delta, noVoxels);
+            weighting = new Voxels<double>(startVoxels.origin, startVoxels.delta, noVoxels);
+            utilization = new Voxels<double>(startVoxels.origin, startVoxels.delta, noVoxels);
+
+            N = 0;
+            for (int k = padding; k < noVoxels - padding; k++)
+            {
+                for (int j = padding; j < noVoxels - padding; j++)
+                {
+                    for (int i = padding; i < noVoxels - padding; i++)
+                    {
+                        int I = startVoxels.ToLinearIndex(i, j, k);
+                        if ((startVoxels.cellValues[I] & maskbit) != 0)
+                        {
+                            weighting.cellValues[I] = 1.0;
+                            ++N;
+                        }
+                    }
+                }
+            }
 
         }
 
-        public void UpdateForce(double factor = 1)
+        public void UpdateForce(double factor = 1.0)
         {
             int nBonds = nlist.Length;
 
@@ -84,6 +111,9 @@ namespace Krill
         {
             oldforceVoxels.cellValues[i] = forceVoxels.cellValues[i];
             forceVoxels.cellValues[i] = Vector3d.Zero;
+            utilization.cellValues[i] = 0;
+
+            oldcuttoff = newcuttoff;
 
             for (int a = 0; a < nBonds; a++)
             {
@@ -105,7 +135,12 @@ namespace Krill
             forceVoxels.cellValues[i].X += spring.cellValues[i].X * dispVoxels.cellValues[i].X;
             forceVoxels.cellValues[i].Y += spring.cellValues[i].Y * dispVoxels.cellValues[i].Y;
             forceVoxels.cellValues[i].Z += spring.cellValues[i].Z * dispVoxels.cellValues[i].Z;
+            utilization.cellValues[i] +=
+                Math.Sqrt(Math.Abs(factor * bodyload.cellValues[i].X + spring.cellValues[i].X * dispVoxels.cellValues[i].X)) +
+                Math.Sqrt(Math.Abs(factor * bodyload.cellValues[i].Y + spring.cellValues[i].Y * dispVoxels.cellValues[i].Y)) +
+                Math.Sqrt(Math.Abs(factor * bodyload.cellValues[i].Z + spring.cellValues[i].Z * dispVoxels.cellValues[i].Z));
 
+            utilization.cellValues[i] = Math.Sqrt(utilization.cellValues[i]);
         }
 
         public double CalculateDampening()
@@ -222,6 +257,124 @@ namespace Krill
 
         }
 
+        public double TotalDisplacement()
+        {
+            // deal with rigid body motion?
+            double displacement = 0;
+            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+            {
+                Vector3d disp = dispVoxels.cellValues[i];
+                displacement += Math.Abs(disp.X) + Math.Abs(disp.Y) + Math.Abs(disp.Z);
+            }
+            return displacement;
+        }
+
+        public void ModifyWeightsUti()
+        {
+            double aveUti = 0;
+            double maxUti = 0;
+            double minUti = double.MaxValue;
+            int count = 0;
+            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+            {
+                if (weighting.cellValues[i] > 1e-6)
+                {
+                    double uti = utilization.cellValues[i];
+                    aveUti += uti;
+                    ++count;
+                    if (uti > maxUti)
+                        maxUti = uti;
+                    if (uti < minUti)
+                        minUti = uti;
+                }
+            }
+            aveUti /= count;
+
+            double gotyckligt = (maxUti - minUti) * 0.2 + minUti;
+
+            Func<double, double> sigsmoid = x => x / Math.Sqrt(1 + x * x);
+            // construct direction vector
+            double[] dir = new double[noVoxels*noVoxels*noVoxels];
+            int countPos = 0;
+            int countNeg = 0;
+            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+            {
+                //if ((startVoxels.cellValues[i] & maskbit) != 0)
+                if (weighting.cellValues[i] > 1e-6)
+                {
+                    double uti = utilization.cellValues[i];
+                    double x = (uti - gotyckligt) / maxUti * 10;
+                    if (uti < gotyckligt)
+                    { 
+                        dir[i] = -Math.Min(-0.5 * sigsmoid(x), weighting.cellValues[i]); 
+                        countNeg++; 
+                    }
+                    else
+                    {
+                        dir[i] = 0.00005 * sigsmoid(x);
+                        countPos++; 
+                    }
+
+                    //double uti = utilization.cellValues[i];
+                    //double x = (uti - gotyckligt) / maxUti / 10;
+                    //if (uti < gotyckligt)
+                    //{ dir[i] = 0.25 * sigsmoid(x); countNeg++; }
+                    //else
+                    //{ dir[i] = 0.25 * sigsmoid(x); countPos++; }
+
+                }
+            }
+
+            // project to hyperplane
+            // calculate the difference from zero
+            double diff = dir.Sum();
+            double factor = 1;
+
+            // "decrease" the others to make it zero
+            if (diff < 0)
+            {
+                double current = dir.Where(x => x > 0).Sum();
+                double factorP = -diff / current + 1;
+
+                //diff /= countPos;
+                for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+                {
+                    if (weighting.cellValues[i] > 1e-6 && dir[i] >= 0)
+                    //{ dir[i] -= diff; }
+                    { dir[i] *= factorP; }
+                }
+            }
+            else if (diff > 0)
+            {
+                diff /= countNeg;
+                for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+                {
+                    if (weighting.cellValues[i] > 1e-6 && dir[i] <= 0)
+                    { dir[i] -= diff; }
+                }
+
+                // find outlier
+                for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+                {
+                    //if ((startVoxels.cellValues[i] & maskbit) != 0 && influence.cellValues[i] > 1e-6)
+                    if (weighting.cellValues[i] > 1e-6)
+                    {
+                        //double newval = dir[i] + influence.cellValues[i];
+                        double temp = -weighting.cellValues[i] / dir[i];
+                        if (temp > 0 && temp < factor)
+                        {
+                            factor = temp;
+                        }
+                    }
+                }
+            }
+
+            // Apply change
+            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+                weighting.cellValues[i] += dir[i] * factor;
+
+        }
+
         void CalcBondForce(int i, int j, double factor)
         {
             int vols = startVoxels.cellValues[i] >> 20;
@@ -229,6 +382,8 @@ namespace Krill
             factor *= (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
 
             //factor *= (1.0 / stiffnessMod.cellValues[i] + 1.0 / stiffnessMod.cellValues[j]) * 0.5;
+
+            factor *= (weighting.cellValues[i] + weighting.cellValues[j]) * 0.5;
 
             Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
 
@@ -241,9 +396,29 @@ namespace Krill
             double s3 = (y * y - xi * xi) / (2 * xi * xi);   // Green Lagrange strain
 
             double f = s * bond_stiffness * vol;
-            forceVoxels.cellValues[i] += factor * f * xi_eta_vec / y;
-        }
 
+            // Make the stress strain curve stranger
+            const double low = 0.05;
+            const double high = 0.5;
+            const double fade = 0.1;
+
+            if (relaxTension && f > low * oldcuttoff)
+            {
+                double fa = f / oldcuttoff;
+                if (fa < low + fade)
+                    f *= -(fa - (low + fade)) / fade;
+                else if (fa < high - fade)
+                    f = 0;
+                else if (fa < high)
+                    f *= (fa - (high - fade)) / fade;
+                else if (f > newcuttoff)
+                    newcuttoff = f;
+            }
+
+            forceVoxels.cellValues[i] += factor * f * xi_eta_vec / y;
+            utilization.cellValues[i] += Math.Sqrt(Math.Abs(factor * f));
+        }
+        
         public void UpdateDisp(double c)
         {
 
