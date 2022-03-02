@@ -7,54 +7,40 @@ using Rhino.Geometry;
 
 namespace Krill
 {
-    internal class SubGradientFitting
+    internal class FitPath
     {
         public List<Point3d> points;
         public List<Point3d> Notpoints;
         public Voxels<double> weights;
-
-        public VoxelSubgradient subgradient;
+        public int[] offsets;
+        public double length;
 
         public List<Vector3d> dirs;
 
-        public SubGradientFitting(Voxels<double> weights, List<Point3d> pts)
+        public FitPath(Voxels<double> weights, double r)
         {
-            subgradient = new VoxelSubgradient(weights);
             this.weights = weights;
-            points = pts;
-            Notpoints = new List<Point3d>(pts);
-
-            dirs = new Vector3d[pts.Count].ToList();
+            offsets = Utility.GetNeighbourOffsets(weights.n, r);
         }
 
         bool inside(int i)
         {
             int n = weights.n;
             weights.To3DIndex(ref i, out int j, out int k);
-            return i >= 1 && i < n - 2 &&
-                   j >= 1 && j < n - 2 &&
-                   k >= 1 && k < n - 2;
+            return i >= 0 && i < n &&
+                   j >= 0 && j < n &&
+                   k >= 0 && k < n;
         }
 
-        //bool inside(int i)
-        //{
-        //    int n = weights.n;
-        //    weights.To3DIndex(ref i, out int j, out int k);
-        //    return i >= 0 && i < n &&
-        //           j >= 0 && j < n &&
-        //           k >= 0 && k < n;
-        //}
-
-        
         public void Iterate()
         {
-            double length = 0;
+            length = 0;
             for (int i = 1; i < points.Count; i++)
             {
                 length += points[i].DistanceTo(points[i - 1]);
             }
             length /= (points.Count - 1);
-            length *= 0.75; // Make the string always stretched
+            length *= 0.95;
 
             for (int a = 1; a < points.Count - 1; ++a)
             {
@@ -63,7 +49,28 @@ namespace Krill
                     continue;
 
                 // Direction of decent
-                Vector3d force = subgradient.SubGradientAt(points[a]);
+                Point3d average = weights.IndexToPoint(i) * weights.cellValues[i];
+                double sum = weights.cellValues[i];
+                for (int jj = 0; jj < offsets.Length; jj++)
+                {
+                    int j = i + offsets[jj];
+                    if (inside(j))
+                    {
+                        average += weights.IndexToPoint(j) * weights.cellValues[j];
+                        sum += weights.cellValues[j];
+                    }
+
+                    j = i - offsets[jj];
+                    if (inside(j))
+                    {
+                        average += weights.IndexToPoint(j) * weights.cellValues[j];
+                        sum += weights.cellValues[j];
+                    }
+                }
+
+                average /= sum;
+                
+                Vector3d force = average - points[a];
                 force *= 0.5;
 
                 // project
@@ -73,14 +80,6 @@ namespace Krill
 
                 force -= dist * normal;
 
-                // dont go further than two delta
-                double factor = (weights.delta * weights.delta * 4) / force.SquareLength;
-                if (!double.IsNaN(factor) && factor < 1)
-                    force *= factor;
-
-                dirs[a] = force; // for debugging
-
-                // string ness
                 Vector3d dir1 = points[a + 1] - points[a];
                 double l1 = dir1.Length;
                 dir1 /= l1;
@@ -92,8 +91,9 @@ namespace Krill
                 dir2 /= l2;
                 double s2 = (l2 - length) / length;
                 force += s2 * dir2;
-                
-                Notpoints[a] = points[a] + force * 0.1;
+
+                Notpoints[a] = points[a] + force * 0.05;
+                dirs[a] = force;
             }
 
             {
