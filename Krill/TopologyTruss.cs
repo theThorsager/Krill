@@ -19,18 +19,45 @@ namespace Krill
         const double forcefactor = 0.5;
         const double maxmove = 2.0;
 
+        struct Indices
+        {
+            public int i;
+            public bool start;
+            public Indices(int i, bool start)
+            {
+                this.i = i;
+                this.start = start;
+            }
+            public override bool Equals(object obj)
+            {
+                if (obj is int i)
+                    return this.i == i;
+                else if (obj is Indices I)
+                    return this.i == I.i;
+                else
+                    return base.Equals(obj);
+            }
+            public override int GetHashCode()
+            {
+                return i.GetHashCode();
+            }
+
+            public static implicit operator Indices(int i)
+            {
+                return new Indices(i, true);
+            }
+        }
+
         class Intersection
         {
             public Point3d pos;
             public bool locked;
             public bool dead;
-            public List<int> curve;
-            public List<int> ind;
-            public Intersection(Point3d pos, List<int> curve, List<int> ind, bool locked = false)
+            public List<Indices> ind;
+            public Intersection(Point3d pos, List<Indices> ind, bool locked = false)
             {
                 this.pos = pos;
                 this.locked = locked;
-                this.curve = curve;
                 this.ind = ind;
                 this.dead = false;
             }
@@ -95,7 +122,7 @@ namespace Krill
             intersections.Clear();
             intersections.AddRange(intersect.Select(x => x.pos));
 
-            GetEndPoints(intersect, plines);    
+            GetEndPoints(intersect, plines);
         }
 
         public List<Point3d> ptsA = null;
@@ -116,7 +143,7 @@ namespace Krill
                     continue;
                 }
 
-                var res = intersections.Where(x => x.curve.Contains(i)).Select(x => x.pos);
+                var res = intersections.Where(x => x.ind.Contains(i)).Select(x => x.pos);
 
                 ptsA.Add(res.First());
                 ptsB.Add(res.Last());
@@ -144,14 +171,13 @@ namespace Krill
                         Point3d point = Point3d.Unset;
                         bool locked = false;
 
-                        List<int> curve = new List<int>();
-                        List<int> ind = new List<int>();
+                        List<Indices> ind = new List<Indices>();
 
                         Point3d ave = Point3d.Unset;
                         for (int j = 0; j < intersections.Count; j++)
                         {
                             var inter = intersections[j];
-                            if (inter.curve.Contains(i))
+                            if (inter.ind.Contains(i))
                             {
                                 inter.dead = true;
                                 if (inter.locked)
@@ -159,17 +185,15 @@ namespace Krill
                                     point = inter.pos;
                                     locked = true;
                                 }
-                                for (int ii = 0; ii < inter.curve.Count; ii++)
+                                for (int ii = 0; ii < inter.ind.Count; ii++)
                                 {
-                                    if (inter.curve[ii] == i)
+                                    if (inter.ind[ii].i == i)
                                     {
-                                        inter.curve.RemoveAt(ii);
                                         inter.ind.RemoveAt(ii);
                                         break;
                                     }
                                 }
 
-                                curve.AddRange(inter.curve);
                                 ind.AddRange(inter.ind);
 
                                 if (!ave.IsValid)
@@ -186,10 +210,10 @@ namespace Krill
                         if (!point.IsValid)
                             point = ave * 0.5;
 
-                        RemoveDuplicates(curve, ind, plines);
-                        CorrectEndpoints(plines, curve, ind, point);
+                        RemoveDuplicates(ind, plines);
+                        CorrectEndpoints(plines, ind, point);
 
-                        Intersection res = new Intersection(point, curve, ind, locked);
+                        Intersection res = new Intersection(point, ind, locked);
                         intersections.Add(res);
                         pline.Clear();
                     }
@@ -206,37 +230,34 @@ namespace Krill
             {
                 Point3d pt = intersections[k];
                 // What is connecting up to this intersection?
-                var curve = new List<int>();
-                var ind = new List<int>();
+                var ind = new List<Indices>();
                 for (int j = 0; j < plines.Count; j++)
                 {
                     if (plines[j].First.DistanceToSquared(pt) < sqtol)
                     {
-                        curve.Add(j);
-                        ind.Add(1);
+                        ind.Add(new Indices(j, true));
                     }
                     else if (plines[j].Last.DistanceToSquared(pt) < sqtol)
                     {
-                        curve.Add(j);
-                        ind.Add(-1);
+                        ind.Add(new Indices(j, false));
                     }
                 }
-                result.Add(new Intersection(pt, curve, ind, true));
+                result.Add(new Intersection(pt, ind, true));
             }
 
             return result;
         }
-            /*
-             * Check existing intersections if one can collapse and maybe move the intersection
-             * rebuild the polylines
-             * 
-             * for {
-             * update as usual for all intermidiate nodes
-             * special update for the intersections
-             * }
-             * 
-             * repeat until no more intersection movement can be made
-             */
+        /*
+         * Check existing intersections if one can collapse and maybe move the intersection
+         * rebuild the polylines
+         * 
+         * for {
+         * update as usual for all intermidiate nodes
+         * special update for the intersections
+         * }
+         * 
+         * repeat until no more intersection movement can be made
+         */
 
         bool ModifyIntersections(List<Polyline> plines, ref List<Intersection> intersections, double d)
         {
@@ -250,10 +271,10 @@ namespace Krill
 
                 // What is connecting up to this intersection?
                 var points = new List<Point3d>();
-                for (int j = 0; j < inter.curve.Count; j++)
+                for (int j = 0; j < inter.ind.Count; j++)
                 {
-                    int ind = inter.curve[j];
-                    int jj = inter.ind[j] == 1 ? 1 : plines[ind].Count - 2;
+                    int ind = inter.ind[j].i;
+                    int jj = inter.ind[j].start ? 1 : plines[ind].Count - 2;
                     points.Add(plines[ind][jj]);
                 }
 
@@ -319,24 +340,21 @@ namespace Krill
                     //CorrectEndpoints(plines, inter.curve, inter.ind, inter.pos);
                     // all is well and the intersection does not need to be modified
                     //newIntersections.Add(inter);
-                    continue;   
+                    continue;
                 }
                 result = true;
 
                 // Find how many buddies each newPoints has
-                var counts = new int[newPoints.Count];
-                var curves = new List<int>[newPoints.Count];
-                var inds = new List<int>[newPoints.Count];
+                var inds = new List<Indices>[newPoints.Count];
                 for (int ii = 0; ii < newPoints.Count; ii++)
                 {
-                    curves[ii] = new List<int>();
-                    inds[ii] = new List<int>();
+                    inds[ii] = new List<Indices>();
                 }
 
-                for (int ki = 0; ki < inter.curve.Count; ki++)
+                for (int ki = 0; ki < inter.ind.Count; ki++)
                 {
-                    int i = inter.curve[ki];
-                    int j = inter.ind[ki] == 1 ? 1 : plines[i].Count - 2;
+                    int i = inter.ind[ki].i;
+                    int j = inter.ind[ki].start ? 1 : plines[i].Count - 2;
                     Point3d pt = plines[i][j];
 
                     double min = double.MaxValue;
@@ -351,8 +369,6 @@ namespace Krill
                             ind = ii;
                         }
                     }
-                    counts[ind]++;
-                    curves[ind].Add(i);
                     inds[ind].Add(inter.ind[ki]);
                 }
 
@@ -360,7 +376,7 @@ namespace Krill
                 {
                     // This intersection should be moved/removed/replaced
                     inter.dead = true;
-                    if (counts[0] > 1 && counts[1] > 1)
+                    if (inds[0].Count > 1 && inds[1].Count > 1)
                     {
                         // add new curve connecting them
                         Polyline pline = new Polyline() { newPoints[0], inter.pos, newPoints[1] };
@@ -368,64 +384,55 @@ namespace Krill
 
                         for (int index = 0; index < 2; index++)
                         {
-                            var curve = curves[index];
                             var ind = inds[index];
 
-                            var extraCurve = new List<int>();
-                            var extraind = new List<int>();
+                            var extraind = new List<Indices>();
                             Point3d locked = Point3d.Unset;
 
-                            for (int ii = curve.Count - 1; ii >= 0; ii--)
+                            for (int ii = ind.Count - 1; ii >= 0; ii--)
                             {
-                                int i = curve[ii];
-                                int j = ind[ii] == 1 ? 0 : plines[i].Count - 1;
+                                int i = ind[ii].i;
+                                int j = ind[ii].start ? 0 : plines[i].Count - 1;
                                 plines[i].RemoveAt(j);
                                 if (plines[i].Count == 1)
                                 {
-                                    MergeIntersections(intersections, plines[i], i, extraCurve, extraind, ref locked, k);
-                                    curve.RemoveAt(ii);
+                                    MergeIntersections(intersections, plines[i], i, extraind, ref locked, k);
                                     ind.RemoveAt(ii);
                                 }
                             }
 
-                            curve.Add(plines.Count - 1);
-                            ind.Add(index == 0 ? 1 : -1);
+                            ind.Add(new Indices(plines.Count - 1, index == 0));
 
-
-                            curve.AddRange(extraCurve);
                             ind.AddRange(extraind);
 
                             // Remove duplicates
-                            RemoveDuplicates(curve, ind, plines);
+                            RemoveDuplicates(ind, plines);
 
-                            CorrectEndpoints(plines, curve, ind, locked.IsValid ? locked : newPoints[index]);
+                            CorrectEndpoints(plines, ind, locked.IsValid ? locked : newPoints[index]);
 
                             if (locked.IsValid)
-                                intersections.Add(new Intersection(locked, curve, ind, true));
+                                intersections.Add(new Intersection(locked, ind, true));
                             else
-                                intersections.Add(new Intersection(newPoints[index], curve, ind));
+                                intersections.Add(new Intersection(newPoints[index], ind));
                         }
                     }
                     else
                     {
-                        int index = counts[0] > 1 ? 0 : 1;
-                        var curve = curves[index];
+                        int index = inds[0].Count > 1 ? 0 : 1;
                         var ind = inds[index];
 
-                        var extraCurve = new List<int>();
-                        var extraind = new List<int>();
+                        var extraind = new List<Indices>();
                         Point3d locked = Point3d.Unset;
 
-                        for (int ii = curve.Count - 1; ii >= 0; ii--)
+                        for (int ii = ind.Count - 1; ii >= 0; ii--)
                         {
-                            int i = curve[ii];
-                            int j = ind[ii] == 1 ? 0 : plines[i].Count - 1;
+                            int i = ind[ii].i;
+                            int j = ind[ii].start ? 0 : plines[i].Count - 1;
 
                             plines[i].RemoveAt(j);
                             if (plines[i].Count == 1)
                             {
-                                MergeIntersections(intersections, plines[i], i, extraCurve, extraind, ref locked, k);
-                                curve.RemoveAt(ii);
+                                MergeIntersections(intersections, plines[i], i, extraind, ref locked, k);
                                 ind.RemoveAt(ii);
                             }
                         }
@@ -433,86 +440,74 @@ namespace Krill
                         {
                             // pull up the other polyline after it
                             int otherIndex = -(index - 1);
-                            int i = curves[otherIndex][0];
-                            int jj = inds[otherIndex][0];
-                            int j = jj == 1 ? 0 : plines[i].Count;
+                            int i = inds[otherIndex][0].i;
+                            int j = inds[otherIndex][0].start ? 0 : plines[i].Count;
                             plines[i].Insert(j, newPoints[index]);
-                            curve.Add(i);
-                            ind.Add(jj);
+                            ind.Add(inds[otherIndex][0]);
                         }
 
-                        curve.AddRange(extraCurve);
                         ind.AddRange(extraind);
 
                         // Remove duplicates
-                        RemoveDuplicates(curve, ind, plines);
+                        RemoveDuplicates(ind, plines);
 
-                        CorrectEndpoints(plines, curve, ind, locked.IsValid ? locked : newPoints[index]);
+                        CorrectEndpoints(plines, ind, locked.IsValid ? locked : newPoints[index]);
 
                         if (locked.IsValid)
-                            intersections.Add(new Intersection(locked, curve, ind, true));
+                            intersections.Add(new Intersection(locked, ind, true));
                         else
-                            intersections.Add(new Intersection(newPoints[index], curve, ind));
+                            intersections.Add(new Intersection(newPoints[index], ind));
                     }
                 }
                 else
                 {
-                    var oldIntCurve = new List<int>();
-                    var oldIntInd = new List<int>();
+                    var oldIntInd = new List<Indices>();
                     // we need a new curve between this and any new intersections
-                    for (int ii = 0; ii < counts.Length; ii++)
+                    for (int ii = 0; ii < inds.Length; ii++)
                     {
-                        if (counts[ii] > 1)
+                        if (inds[ii].Count > 1)
                         {
                             Polyline pline = new Polyline() { inter.pos, newPoints[ii] };
                             plines.Add(pline);
-                            var curve = curves[ii];
                             var ind = inds[ii];
 
-                            var extraCurve = new List<int>();
-                            var extraind = new List<int>();
+                            var extraind = new List<Indices>();
                             Point3d locked = Point3d.Unset;
 
-                            for (int jj = curve.Count - 1; jj >= 0; jj--)
+                            for (int jj = ind.Count - 1; jj >= 0; jj--)
                             {
-                                int i = curve[jj];
-                                int j = ind[jj] == 1 ? 0 : plines[i].Count - 1;
+                                int i = ind[jj].i;
+                                int j = ind[jj].start ? 0 : plines[i].Count - 1;
                                 plines[i].RemoveAt(j);
                                 if (plines[i].Count == 1)
                                 {
-                                    MergeIntersections(intersections, plines[i], i, extraCurve, extraind, ref locked, k);
-                                    curve.RemoveAt(jj);
+                                    MergeIntersections(intersections, plines[i], i, extraind, ref locked, k);
                                     ind.RemoveAt(jj);
                                 }
                             }
 
-                            curve.Add(plines.Count - 1);
-                            oldIntCurve.Add(plines.Count - 1);
-                            ind.Add(-1);
-                            oldIntInd.Add(1);
+                            ind.Add(new Indices(plines.Count - 1, false));
+                            oldIntInd.Add(new Indices(plines.Count - 1, true));
 
-                            curve.AddRange(extraCurve);
                             ind.AddRange(extraind);
 
                             // Remove duplicates
-                            RemoveDuplicates(curve, ind, plines);
+                            RemoveDuplicates(ind, plines);
 
-                            CorrectEndpoints(plines, curve, ind, locked.IsValid ? locked : newPoints[ii]);
+                            CorrectEndpoints(plines, ind, locked.IsValid ? locked : newPoints[ii]);
 
                             if (locked.IsValid)
-                                intersections.Add(new Intersection(locked, curve, ind, true));
+                                intersections.Add(new Intersection(locked, ind, true));
                             else
-                                intersections.Add(new Intersection(newPoints[ii], curve, ind));
+                                intersections.Add(new Intersection(newPoints[ii], ind));
                         }
                         else
                         {
-                            oldIntCurve.Add(curves[ii][0]);
                             oldIntInd.Add(inds[ii][0]);
                         }
                     }
 
-                    CorrectEndpoints(plines, oldIntCurve, oldIntInd, inter.pos);
-                    inter.curve = oldIntCurve;
+                    CorrectEndpoints(plines, oldIntInd, inter.pos);
                     inter.ind = oldIntInd;
                     // This intersection remains
                     //newIntersections.Add(new Intersection(inter.pos, oldIntCurve, oldIntInd, inter.locked));
@@ -524,31 +519,28 @@ namespace Krill
             return result;
         }
 
-        void RemoveIndex(List<int> curve, List<int> ind, int index)
+        void RemoveIndex(List<Indices> ind, int index)
         {
-            for (int j = curve.Count - 1; j >= 0; j--)
+            for (int j = ind.Count - 1; j >= 0; j--)
             {
-                if (curve[j] == index)
+                if (ind[j].i == index)
                 {
-                    curve.RemoveAt(j);
                     ind.RemoveAt(j);
                 }
             }
         }
 
-        void RemoveDuplicates(List<int> curve, List<int> ind, List<Polyline> plines)
+        void RemoveDuplicates(List<Indices> ind, List<Polyline> plines)
         {
-            for (int i = curve.Count - 1; i >= 1; i--)
+            for (int i = ind.Count - 1; i >= 1; i--)
             {
                 for (int j = i - 1; j >= 0; j--)
                 {
-                    if (curve[i] == curve[j])
+                    if (ind[i].i == ind[j].i)
                     {
-                        int index = curve[i];
+                        int index = ind[i].i;
                         plines[index].Clear();
 
-                        curve.RemoveAt(i);
-                        curve.RemoveAt(j);
                         ind.RemoveAt(i);
                         ind.RemoveAt(j);
 
@@ -560,26 +552,25 @@ namespace Krill
 
         }
 
-        void CorrectEndpoints(List<Polyline> plines, List<int> curve, List<int> ind, Point3d pt)
+        void CorrectEndpoints(List<Polyline> plines, List<Indices> ind, Point3d pt)
         {
-            for (int i = 0; i < curve.Count; i++)
+            for (int i = 0; i < ind.Count; i++)
             {
-                if (ind[i] == 1)
-                    plines[curve[i]].First = pt;
+                if (ind[i].start)
+                    plines[ind[i].i].First = pt;
                 else
-                    plines[curve[i]].Last = pt;
+                    plines[ind[i].i].Last = pt;
             }
         }
 
-        void MergeIntersections(List<Intersection> intersections, Polyline pline, int index, List<int> curve, List<int> ind, ref Point3d locked, int me)
+        void MergeIntersections(List<Intersection> intersections, Polyline pline, int index, List<Indices> ind, ref Point3d locked, int me)
         {
             const double sqtol = 1e-6;
             // find the other intersection
             Intersection other = null;
-            int i;
-            for (i = 0; i < intersections.Count; i++)
+            for (int i = 0; i < intersections.Count; i++)
             {
-                if (i != me && !intersections[i].dead && intersections[i].curve.Contains(index))
+                if (i != me && !intersections[i].dead && intersections[i].ind.Contains(index))
                 {
                     other = intersections[i];
                     break;
@@ -587,10 +578,10 @@ namespace Krill
             }
             if (other is null)
             {
-                if (curve.Contains(index))
+                if (ind.Contains(index))
                 {
                     // this curve already attatches to it self
-                    RemoveIndex(curve, ind, index);
+                    RemoveIndex(ind, index);
                     pline.Clear();
                     return;
                 }
@@ -599,9 +590,8 @@ namespace Krill
                 // let there be error
             }
 
-            RemoveIndex(other.curve, other.ind, index);
+            RemoveIndex(other.ind, index);
 
-            curve.AddRange(other.curve);
             ind.AddRange(other.ind);
 
             if (other.locked)
@@ -624,12 +614,12 @@ namespace Krill
                     continue;
                 }
                 // Add stringiness
-                for (int i = 0; i < inter.curve.Count; i++)
+                for (int i = 0; i < inter.ind.Count; i++)
                 {
-                    double length = lengths[inter.curve[i]];
-                    Polyline pline = plines[inter.curve[i]];
+                    double length = lengths[inter.ind[i].i];
+                    Polyline pline = plines[inter.ind[i].i];
 
-                    if (inter.ind[i] == 1)
+                    if (inter.ind[i].start)
                     {
                         Vector3d dir = pline[1] - pline[0];
                         double l = dir.Length;
@@ -637,7 +627,7 @@ namespace Krill
                         double s1 = (l - length) / length;
                         force += s1 * dir;
                     }
-                    else if (inter.ind[i] == -1)
+                    else
                     {
                         Vector3d dir = pline[pline.Count - 2] - pline.Last;
                         double l = dir.Length;
@@ -668,15 +658,15 @@ namespace Krill
             for (int i = 0; i < intersections.Count; i++)
             {
                 intersections[i].pos += moves[i];
-                for (int j = 0; j < intersections[i].curve.Count; j++)
+                for (int j = 0; j < intersections[i].ind.Count; j++)
                 {
-                    if (intersections[i].ind[j] == 1)
+                    if (intersections[i].ind[j].start)
                     {
-                        plines[intersections[i].curve[j]].First += moves[i];
+                        plines[intersections[i].ind[j].i].First += moves[i];
                     }
-                    else if (intersections[i].ind[j] == -1)
+                    else
                     {
-                        plines[intersections[i].curve[j]].Last += moves[i];
+                        plines[intersections[i].ind[j].i].Last += moves[i];
                     }
                 }
             }
@@ -749,7 +739,7 @@ namespace Krill
                 res.Add(pline[pline.Count - 1]);
                 results.Add(res);
             }
-            
+
             return results;
         }
     }
