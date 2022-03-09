@@ -16,6 +16,10 @@ namespace Krill
         public Voxels<int> startVoxels;
         public int[] nlist;    // Neighbour list
         public double[] kernel;
+
+        public Vector3d[] nlist_xi;
+        public double[] nlist_xi_length;
+
         public double vol;   // Volume of the particles (same for all)
         public int padding;
 
@@ -82,6 +86,22 @@ namespace Krill
                 }
             }
 
+            PreComputeXi();
+        }
+
+        public void PreComputeXi()
+        {
+            nlist_xi = new Vector3d[nlist.Length];
+            nlist_xi_length = new double[nlist.Length];
+            int i = noVoxels * noVoxels * noVoxels / 2;
+            for (int aa = 0; aa < nlist.Length; aa++)
+            {
+                int j = i + nlist[aa];
+                Vector3d xi = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+                double xi_length = xi.Length;
+                nlist_xi[aa] = xi;
+                nlist_xi_length[aa] = xi_length;
+            }
         }
 
         public void UpdateForce(double factor = 1.0)
@@ -125,10 +145,10 @@ namespace Krill
                 bool m = startVoxels.cellValues[jm] != 0;
                 
                 if (p)
-                    CalcBondForce(i, jp, surfCorr);
+                    CalcBondForce(i, jp, surfCorr, a);
 
                 if (m)
-                    CalcBondForce(i, jm, surfCorr);
+                    CalcBondForce(i, jm, surfCorr, a);
             }
 
             forceVoxels.cellValues[i] += bodyload.cellValues[i] * factor;
@@ -375,7 +395,7 @@ namespace Krill
 
         }
 
-        void CalcBondForce(int i, int j, double factor)
+        void CalcBondForce(int i, int j, double factor, int a)
         {
             int vols = startVoxels.cellValues[i] >> 20;
             vols += startVoxels.cellValues[j] >> 20;
@@ -385,15 +405,14 @@ namespace Krill
 
             factor *= (weighting.cellValues[i] + weighting.cellValues[j]) * 0.5;
 
-            Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+            //Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+            Vector3d xi_vec = i < j ? nlist_xi[a] : -nlist_xi[a];
 
             Vector3d xi_eta_vec = dispVoxels.cellValues[j] - dispVoxels.cellValues[i] + xi_vec;
 
-            double xi = xi_vec.Length;
+            double xi = nlist_xi_length[a];
             double y = xi_eta_vec.Length;
             double s = (y - xi) / xi;      // Engineering strain
-            double s2 = Math.Log(y / xi);   // True strain
-            double s3 = (y * y - xi * xi) / (2 * xi * xi);   // Green Lagrange strain
 
             double f = s * bond_stiffness * vol;
 

@@ -46,6 +46,31 @@ namespace Krill
             return result.Where(x => x > 0).ToHashSet().OrderBy(x => x).ToArray();
         }
 
+        public static int[] GetNeighbourOffsets2d(int n, double r)
+        {
+            int rsquared = (int)(r * r);
+            int rfloor = (int)r;
+
+            List<int> result = new List<int>();
+
+
+            for (int j = 0; j <= rfloor; j++)
+            {
+                for (int i = 0; i <= rfloor; i++)
+                {
+                    if (i * i + j * j <= rsquared)
+                    {
+                        result.Add(i + n * j);
+                        result.Add(i - n * j);
+                        result.Add(-i + n * j);
+                        result.Add(-i - n * j);
+                    }
+                }
+            }
+
+            return result.Where(x => x > 0).ToHashSet().OrderBy(x => x).ToArray();
+        }
+
         public static double[] getKernelWeights(int n, double r, int[] nlist)
         {
             int rfloor = (int)r;

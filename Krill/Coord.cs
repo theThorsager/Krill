@@ -15,6 +15,10 @@ namespace Krill
         {
             X = x; Y = y; Z = z;
         }
+        public Coord(int x, int y)
+        {
+            X = x; Y = y; Z = 0;
+        }
 
         //public static Coord operator -(Coord a, Coord b)
         //{
