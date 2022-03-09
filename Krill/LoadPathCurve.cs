@@ -197,7 +197,10 @@ namespace Krill
             int INDi1j1k1 = startVoxels.CoordToIndex(i1j1k1);
 
             // Väldigt basic break-villkor, uppdatera och implementera ett bättre
-            if ((startVoxels.cellValues[INDi1j1k1] & maskbit) == 0 && (startVoxels.cellValues[INDi0j0k0] & maskbit) == 0)
+            if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j0k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k1] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k1] & maskbit) == 0)
                 basicEnd = true;
 
             dir.X = (1 - a) * (1 - b) * (1 - c) * CorrectPrincpDir(INDi0j0k0, previousDir).X

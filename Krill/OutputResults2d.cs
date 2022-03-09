@@ -381,16 +381,16 @@ namespace Krill
 
         public void UpdateStresses()
         {
-            double C = E / ((1 + nu) * (1 - 2 * nu));
+            double C = E / (1 - nu * nu);
 
             for (int i = 0; i < noVoxels; i++)
             {
                 if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
 
-                stressXX.cellValues[i] = C * ((1 - nu) * strainXX.cellValues[i] + nu * strainYY.cellValues[i]);
-                stressYY.cellValues[i] = C * (nu * strainXX.cellValues[i] + (1 - nu) * strainYY.cellValues[i]);
-                stressXY.cellValues[i] = C * (1 - 2 * nu) * strainXY.cellValues[i];
+                stressXX.cellValues[i] = C * (strainXX.cellValues[i] + nu * strainYY.cellValues[i]);
+                stressYY.cellValues[i] = C * (nu * strainXX.cellValues[i] + strainYY.cellValues[i]);
+                stressXY.cellValues[i] = C * (1 - nu) * strainXY.cellValues[i];
             }
         }
 
