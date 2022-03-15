@@ -619,7 +619,7 @@ namespace Krill
             var intersection = Rhino.Geometry.Intersect.Intersection.
                 CurveLine(bc.curve, new Line(new Point3d(point.X, point.Y, 0), 
                                     new Vector3d(xi_vec.X, xi_vec.Y, 0)), 1e-6, 1e-6);
-            double? ti = intersection.FirstOrDefault(x => x.ParameterA > 0)?.ParameterA;
+            double? ti = intersection.FirstOrDefault(x => x.ParameterB > 0)?.ParameterB;
             if (ti is null || ti <= 0)
                 return Vector2d.Zero;
 
