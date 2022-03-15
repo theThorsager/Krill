@@ -300,7 +300,9 @@ namespace Krill.Grasshopper
                     springs = model.spring,
                     bodyload = model.bodyload,
                     utilization = model.utilization,
-                    weighting = model.weighting
+                    weighting = model.weighting,
+                    relaxTension = model.relaxTension,
+                    oldcuttoff = model.oldcuttoff
                 });
 
             Done();

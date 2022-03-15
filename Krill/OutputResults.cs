@@ -42,7 +42,11 @@ namespace Krill
 
         public Voxels<Vector3d> princpStress;   // "magnitude" (only sign is relevant?)
         public Voxels<Vector3d[]> princpDir;
+
         public Voxels<Matrix> strain;
+        public Voxels<Matrix> stressTensor;
+
+        public Voxels<double> sumCurl;
 
         //public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs, Voxels<Vector3d> bodyload)
         public OutputResults(Containers.LinearSolution linSol, double PoissonsRatio = 0.25)
@@ -85,6 +89,9 @@ namespace Krill
             princpStress = new Voxels<Vector3d>(origin, delta, n);
             princpDir = new Voxels<Vector3d[]>(origin, delta, n);
             strain = new Voxels<Matrix>(origin, delta, n);
+            stressTensor = new Voxels<Matrix>(origin, delta, n);
+
+            sumCurl = new Voxels<double>(origin, delta, n);
         }
 
         public void UpdateFakeStress(Voxels<Vector3d> dispVoxels)
@@ -111,7 +118,7 @@ namespace Krill
                         int vols = startVoxels.cellValues[i] >> 20;
                         vols += startVoxels.cellValues[j] >> 20;
                         double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
-                        s *= bond_stiffness * vol;
+                        s *= bond_stiffness * vol * factorS;
                         S[ii, 0] = s;
 
                         A[ii, 0] = n.X * n.X;
@@ -131,7 +138,7 @@ namespace Krill
                         int vols = startVoxels.cellValues[i] >> 20;
                         vols += startVoxels.cellValues[j] >> 20;
                         double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
-                        s *= bond_stiffness * vol;
+                        s *= bond_stiffness * vol * factorS;
                         S[noBonds / 2 + ii, 0] = s;
 
                         A[noBonds / 2 + ii, 0] = n.X * n.X;
@@ -152,39 +159,39 @@ namespace Krill
                 E = (AA * AT) * S;
 
 
-                Vector3d d = dispVoxels.cellValues[i];
-                int noRows = A.RowCount;
+                //Vector3d d = dispVoxels.cellValues[i];
+                //int noRows = A.RowCount;
 
-                double factor = 1;
-                double factorA = 1;
+                //double factor = 1;
+                //double factorA = 1;
 
-                if (springs.cellValues[i].X != 0)
-                {
-                    A[noRows - 3, 0] = 1 * factorA;
-                    S[noRows - 3, 0] = Math.Abs(springs.cellValues[i].X * d.X + bodyload.cellValues[i].X) * factor * Math.Sign(E[0, 0]);
-                }
+                //if (springs.cellValues[i].X != 0)
+                //{
+                //    A[noRows - 3, 0] = 1 * factorA;
+                //    S[noRows - 3, 0] = Math.Abs(springs.cellValues[i].X * d.X + bodyload.cellValues[i].X) * factor * Math.Sign(E[0, 0]);
+                //}
                 
-                if (springs.cellValues[i].Y != 0)
-                {
-                    A[noRows - 2, 1] = 1 * factorA;
-                    //S[noRows - 2, 0] = d.Y;
-                    S[noRows - 2, 0] = Math.Abs(springs.cellValues[i].Y * d.Y + bodyload.cellValues[i].Y) * factor * Math.Sign(E[1, 0]);
-                }
+                //if (springs.cellValues[i].Y != 0)
+                //{
+                //    A[noRows - 2, 1] = 1 * factorA;
+                //    //S[noRows - 2, 0] = d.Y;
+                //    S[noRows - 2, 0] = Math.Abs(springs.cellValues[i].Y * d.Y + bodyload.cellValues[i].Y) * factor * Math.Sign(E[1, 0]);
+                //}
 
-                if (springs.cellValues[i].Z != 0)
-                {
-                    A[noRows - 1, 2] = 1 * factorA;
-                    //S[noRows - 1, 0] = d.Z;
-                    S[noRows - 1, 0] = Math.Abs(springs.cellValues[i].Z * d.Z + bodyload.cellValues[i].Z) * factor * Math.Sign(E[2, 0]);
-                }
+                //if (springs.cellValues[i].Z != 0)
+                //{
+                //    A[noRows - 1, 2] = 1 * factorA;
+                //    //S[noRows - 1, 0] = d.Z;
+                //    S[noRows - 1, 0] = Math.Abs(springs.cellValues[i].Z * d.Z + bodyload.cellValues[i].Z) * factor * Math.Sign(E[2, 0]);
+                //}
 
-                AT = A.Duplicate();
-                AT.Transpose();
+                //AT = A.Duplicate();
+                //AT.Transpose();
 
-                AA = AT * A;
-                AA.Invert(1e-6);        // For now chose an arbitrary tolerance
+                //AA = AT * A;
+                //AA.Invert(1e-6);        // For now chose an arbitrary tolerance
 
-                E = (AA * AT) * S;
+                //E = (AA * AT) * S;
 
                 stressXX.cellValues[i] = E[0, 0];
                 stressYY.cellValues[i] = E[1, 0];
@@ -192,6 +199,19 @@ namespace Krill
                 stressXY.cellValues[i] = E[3, 0];
                 stressXZ.cellValues[i] = E[4, 0];
                 stressYZ.cellValues[i] = E[5, 0];
+
+                Matrix tensor = new Matrix(3, 3);
+                tensor[0, 0] = stressXX.cellValues[i];
+                tensor[0, 1] = stressXY.cellValues[i];
+                tensor[0, 2] = stressXZ.cellValues[i];
+                tensor[1, 0] = stressXY.cellValues[i];
+                tensor[1, 1] = stressYY.cellValues[i];
+                tensor[1, 2] = stressYZ.cellValues[i];
+                tensor[2, 0] = stressXZ.cellValues[i];
+                tensor[2, 1] = stressYZ.cellValues[i];
+                tensor[2, 2] = stressZZ.cellValues[i];
+
+                stressTensor.cellValues[i] = tensor;
             }
         }
 
@@ -555,6 +575,19 @@ namespace Krill
                 stressXY.cellValues[i] = C * (1 - 2 * nu) * strainXY.cellValues[i];
                 stressXZ.cellValues[i] = C * (1 - 2 * nu) * strainXZ.cellValues[i];
                 stressYZ.cellValues[i] = C * (1 - 2 * nu) * strainYZ.cellValues[i];
+
+                Matrix tensor = new Matrix(3, 3);
+                tensor[0, 0] = stressXX.cellValues[i];
+                tensor[0, 1] = stressXY.cellValues[i];
+                tensor[0, 2] = stressXZ.cellValues[i];
+                tensor[1, 0] = stressXY.cellValues[i];
+                tensor[1, 1] = stressYY.cellValues[i];
+                tensor[1, 2] = stressYZ.cellValues[i];
+                tensor[2, 0] = stressXZ.cellValues[i];
+                tensor[2, 1] = stressYZ.cellValues[i];
+                tensor[2, 2] = stressZZ.cellValues[i];
+
+                stressTensor.cellValues[i] = tensor;
             }
         }
 
@@ -755,5 +788,75 @@ namespace Krill
             
         }
 
+        public void CalcCurlOfStressField()
+        {
+            for (int ind = 0; ind < noVoxels; ind++)
+            {
+                if ((startVoxels.cellValues[ind] & maskbit) == 0)
+                    continue;
+
+                Matrix curl = new Matrix(3, 3);
+                double curlSum = 0;
+
+                for (int m = 0; m < 3; m++)
+                {
+                    int k = 0;
+                    curl[k, m] = DerStress(ind, m, 2, 1) - DerStress(ind, m, 1, 2);
+                    curlSum += curl[k, m] * curl[k, m];
+
+                    k = 1;
+                    curl[k, m] = DerStress(ind, m, 0, 2) - DerStress(ind, m, 2, 0);
+                    curlSum += curl[k, m] * curl[k, m];
+
+                    k = 2;
+                    curl[k, m] = DerStress(ind, m, 1, 0) - DerStress(ind, m, 0, 1);
+                    curlSum += curl[k, m] * curl[k, m];
+                }
+
+                sumCurl.cellValues[ind] = curlSum;
+
+            }
+        }
+
+        private double DerStress(int ind, int a, int b, int dir)
+        {
+            double dS;
+
+            int i = ind;
+
+            stressTensor.To3DIndex(ref i, out int j, out int k);
+
+            Vector3d ind3d = new Vector3d(i, j, k);
+
+            double dx = stressTensor.delta * 2;
+
+            ind3d[dir] += -1;
+
+            int n0 = stressTensor.ToLinearIndex((int)ind3d.X, (int)ind3d.Y, (int)ind3d.Z);
+            double dS0;
+            if (startVoxels.cellValues[n0] != 0)
+                dS0 = stressTensor.cellValues[n0][a, b];
+            else
+            {
+                dS0 = 0;
+                dx *= 0.5;
+            }                
+
+            ind3d[dir] += 2;
+
+            int n2 = stressTensor.ToLinearIndex((int)ind3d.X, (int)ind3d.Y, (int)ind3d.Z);
+            double dS2;
+            if (startVoxels.cellValues[n2] != 0)
+                dS2 = stressTensor.cellValues[n2][a, b];
+            else
+            {
+                dS2 = 0;
+                dx *= 0.5;
+            }
+
+            dS = (dS0 - dS2) / dx;
+
+            return dS;
+        }
     }
 }

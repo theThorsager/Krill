@@ -14,6 +14,9 @@ namespace Krill
         public Voxels2d<int> startVoxels;
         public int[] nList;
 
+        double oldcuttoff = 0.0;
+        bool relaxTension = false;
+
         public double E;
         public double nu;
         public double bond_stiffness;
@@ -38,9 +41,14 @@ namespace Krill
         public Voxels2d<Vector3d[]> princpDir;
         public Voxels2d<Matrix> strain;
 
+        public Voxels2d<double> strainDer;
+
         //public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs, Voxels<Vector3d> bodyload)
         public OutputResults2d(Containers.LinearSolution2d linSol, double PoissonsRatio = 0.333333)
         {
+            this.oldcuttoff = linSol.oldcuttoff;
+            this.relaxTension = linSol.relaxTension;
+
             this.startVoxels = linSol.mask;
             this.bodyload = linSol.bodyload;
             this.nList = linSol.nList;
@@ -73,6 +81,8 @@ namespace Krill
             princpStress = new Voxels2d<Vector3d>(origin, delta, n);
             princpDir = new Voxels2d<Vector3d[]>(origin, delta, n);
             strain = new Voxels2d<Matrix>(origin, delta, n);
+
+            strainDer = new Voxels2d<double>(origin, delta, n);
         }
 
         public void UpdateFakeStress(Voxels2d<Vector2d> dispVoxels)
@@ -134,35 +144,35 @@ namespace Krill
                 E = (AA * AT) * S;
 
 
-                Vector2d d = dispVoxels.cellValues[i];
-                int noRows = A.RowCount;
+                //Vector2d d = dispVoxels.cellValues[i];
+                //int noRows = A.RowCount;
 
-                double factor = 1;
-                double factorA = 1;
+                //double factor = 1;
+                //double factorA = 1;
 
-                if (springs.cellValues[i].X != 0)
-                {
-                    A[noRows - 2, 0] = 1 * factorA;
-                    S[noRows - 2, 0] = Math.Abs(springs.cellValues[i].X * d.X + bodyload.cellValues[i].X) * factor * Math.Sign(E[0, 0]);
-                }
+                //if (springs.cellValues[i].X != 0)
+                //{
+                //    A[noRows - 2, 0] = 1 * factorA;
+                //    S[noRows - 2, 0] = Math.Abs(springs.cellValues[i].X * d.X + bodyload.cellValues[i].X) * factor * Math.Sign(E[0, 0]);
+                //}
                 
-                if (springs.cellValues[i].Y != 0)
-                {
-                    A[noRows - 1, 1] = 1 * factorA;
-                    S[noRows - 1, 0] = Math.Abs(springs.cellValues[i].Y * d.Y + bodyload.cellValues[i].Y) * factor * Math.Sign(E[1, 0]);
-                }
+                //if (springs.cellValues[i].Y != 0)
+                //{
+                //    A[noRows - 1, 1] = 1 * factorA;
+                //    S[noRows - 1, 0] = Math.Abs(springs.cellValues[i].Y * d.Y + bodyload.cellValues[i].Y) * factor * Math.Sign(E[1, 0]);
+                //}
 
-                AT = A.Duplicate();
-                AT.Transpose();
+                //AT = A.Duplicate();
+                //AT.Transpose();
 
-                AA = AT * A;
-                AA.Invert(1e-6);        // For now chose an arbitrary tolerance
+                //AA = AT * A;
+                //AA.Invert(1e-6);        // For now chose an arbitrary tolerance
 
-                E = (AA * AT) * S;
+                //E = (AA * AT) * S;
 
                 stressXX.cellValues[i] = E[0, 0];
                 stressYY.cellValues[i] = E[1, 0];
-                stressXY.cellValues[i] = E[3, 0];
+                stressXY.cellValues[i] = E[2, 0];
             }
         }
 
@@ -265,9 +275,83 @@ namespace Krill
                 strainXX.cellValues[i] = E[0, 0];
                 strainYY.cellValues[i] = E[1, 0];
                 strainXY.cellValues[i] = E[2, 0];
-                E[2, 0] *= 2.0;
-                strain.cellValues[i] = E;
+                // E[2, 0] *= 2.0;
+
+                Matrix strainTensor = new Matrix(2, 2);
+                strainTensor[0, 0] = E[0, 0];
+                strainTensor[0, 1] = E[2, 0];
+                strainTensor[1, 0] = E[2, 0];
+                strainTensor[1, 1] = E[1, 0];
+
+                strain.cellValues[i] = strainTensor;
             }
+        }
+
+        public void UpdateDsDx(Voxels2d<Vector2d> dispVoxels)
+        {
+            for (int i = 0; i < noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                int bondCount = 0;
+                double dsdx = 0;
+
+                for (int ii = 0; ii < noBonds / 2; ii++)
+                {
+                    int j = i + nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        bondCount++;
+
+                        CalcDxAndNormal(dispVoxels, i, j, out double dx, out Vector2d n);
+                        Matrix N = new Matrix(2, 1);
+                        N[0, 0] = n.X;
+                        N[1, 0] = n.Y;
+
+                        Matrix Nt = N.Duplicate();
+                        Nt.Transpose();
+
+                        Matrix dsi = Nt * strain.cellValues[i] * N;
+                        Matrix dsj = Nt * strain.cellValues[j] * N;
+
+                        dsdx += Math.Abs(dsi[0, 0] - dsj[0, 0]) / dx;
+                    }
+
+                    j = i - nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        bondCount++;
+
+                        CalcDxAndNormal(dispVoxels, i, j, out double dx, out Vector2d n);
+                        Matrix N = new Matrix(2, 1);
+                        N[0, 0] = n.X;
+                        N[1, 0] = n.Y;
+
+                        Matrix Nt = N.Duplicate();
+                        Nt.Transpose();
+
+                        Matrix dsi = Nt * strain.cellValues[i] * N;
+                        Matrix dsj = Nt * strain.cellValues[j] * N;
+
+                        dsdx += Math.Abs(dsi[0, 0] - dsj[0, 0]) / dx;
+                    }
+                }
+
+                strainDer.cellValues[i] = dsdx;
+            }
+
+        }
+
+        void CalcDxAndNormal(Voxels2d<Vector2d> dispVoxels, int i, int j, out double dx, out Vector2d n)
+        {
+            Vector2d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+            Vector2d xi_eta_vec = dispVoxels.cellValues[j] - dispVoxels.cellValues[i] + xi_vec;
+
+            double y = xi_eta_vec.Length;
+
+            dx = y;
+            n = xi_eta_vec / y;
         }
 
         void CalcStretchAndNormal(Voxels2d<Vector2d> dispVoxels, int i, int j, out double s, out Vector2d n)

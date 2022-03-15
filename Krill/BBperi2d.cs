@@ -40,7 +40,7 @@ namespace Krill
         private int noVoxels;
 
         public bool relaxTension = false;
-        double oldcuttoff = 0;
+        public double oldcuttoff = 0;
         double newcuttoff = 0;
 
         public BBperi2d(Voxels2d<int> orgVoxels, double Bond_stiffness, int[] neighbour_list,

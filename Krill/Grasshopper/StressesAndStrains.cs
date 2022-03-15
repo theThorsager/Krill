@@ -54,6 +54,8 @@ namespace Krill.Grasshopper
             pManager.AddNumberParameter("PrincpStress1", "s1", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("PrincpStress2", "s2", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("PrincpStress3", "s3", "", GH_ParamAccess.list);
+
+            pManager.AddNumberParameter("SumOfCurl", "curl", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -73,9 +75,11 @@ namespace Krill.Grasshopper
             // Do work
             OutputResults outputR = new OutputResults(linearSolution);
             outputR.UpdateFakeStrains(linearSolution.displacments);
+            //outputR.UpdateFakeStress(linearSolution.displacments);
             outputR.UpdateStresses();
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
+            outputR.CalcCurlOfStressField();
 
             List<Point3d> orgPoints = new List<Point3d>();
 
@@ -102,6 +106,8 @@ namespace Krill.Grasshopper
             List<double> stress1 = new List<double>();
             List<double> stress2 = new List<double>();
             List<double> stress3 = new List<double>();
+
+            List<double> curlSum = new List<double>();
 
             const int maskbit = 0x000000FF;
 
@@ -135,6 +141,8 @@ namespace Krill.Grasshopper
                 stress1.Add(outputR.princpStress.cellValues[i].X);
                 stress2.Add(outputR.princpStress.cellValues[i].Y);
                 stress3.Add(outputR.princpStress.cellValues[i].Z);
+
+                curlSum.Add(outputR.sumCurl.cellValues[i]);
             }
 
             // Set data
@@ -182,6 +190,9 @@ namespace Krill.Grasshopper
                 DA.SetDataList(18, stress2);
             if (stress3 != null)
                 DA.SetDataList(19, stress3);
+
+            if (curlSum != null)
+                DA.SetDataList (20, curlSum);
         }
 
         /// <summary>

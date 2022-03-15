@@ -22,5 +22,8 @@ namespace Krill.Containers
         public Voxels2d<Vector2d> bodyload { get; set; } = null;
         public Voxels2d<double> utilization { get; set; } = null;
         public Voxels2d<double> weighting { get; set; } = null;
+
+        public bool relaxTension = false;
+        public double oldcuttoff = 0.0;
     }
 }

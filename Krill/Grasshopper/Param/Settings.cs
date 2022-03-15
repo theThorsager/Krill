@@ -68,6 +68,7 @@ namespace Krill.Grasshopper.Param
             //double c = Analytical(K3d, d);
             //double c = StiffnessMod(K3d, Delta);
             double c = VolumeCorr(K3d, Delta, delta);
+            //c = Analytical2d(E, delta);
 
             DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
             { 
@@ -104,6 +105,13 @@ namespace Krill.Grasshopper.Param
         {
             // E to bondstiffness, see: Peridigm User Guide
             return 18.0 * K3d / (Math.PI * d * d * d * d);
+        }
+
+        private double Analytical2d(double E, double d)
+        {
+            double K2D = E / (2.0 * (1.0 - 0.333333333));
+            // E to bondstiffness, see: Peridigm User Guide
+            return 12.0 * K2D / (Math.PI * d * d * d);
         }
 
         /// <summary>
