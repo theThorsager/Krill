@@ -56,6 +56,11 @@ namespace Krill.Grasshopper
             pManager.AddNumberParameter("PrincpStress3", "s3", "", GH_ParamAccess.list);
 
             pManager.AddNumberParameter("SumOfCurl", "curl", "", GH_ParamAccess.list);
+
+            pManager.AddNumberParameter("SumOfCurlPstress", "P_curl", "", GH_ParamAccess.list);
+
+            pManager.AddNumberParameter("LengtDivStressField", "div", "", GH_ParamAccess.list);
+            pManager.AddVectorParameter("DivOfStressField", "divVec", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -80,6 +85,8 @@ namespace Krill.Grasshopper
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
             outputR.CalcCurlOfStressField();
+            outputR.CalcCurlOfPrinpStress();
+            outputR.CalcDivOfStressField();
 
             List<Point3d> orgPoints = new List<Point3d>();
 
@@ -108,6 +115,12 @@ namespace Krill.Grasshopper
             List<double> stress3 = new List<double>();
 
             List<double> curlSum = new List<double>();
+
+            List<double> curlSumP = new List<double>();
+
+            List<double> divStress = new List<double>();
+
+            List<Vector3d> divVec = new List<Vector3d>();
 
             const int maskbit = 0x000000FF;
 
@@ -143,6 +156,10 @@ namespace Krill.Grasshopper
                 stress3.Add(outputR.princpStress.cellValues[i].Z);
 
                 curlSum.Add(outputR.sumCurl.cellValues[i]);
+                curlSumP.Add(outputR.sumCurlPstress.cellValues[i]);
+
+                divStress.Add(outputR.lengthDivStress.cellValues[i]);
+                divVec.Add(outputR.divOfStress.cellValues[i]);
             }
 
             // Set data
@@ -192,7 +209,16 @@ namespace Krill.Grasshopper
                 DA.SetDataList(19, stress3);
 
             if (curlSum != null)
-                DA.SetDataList (20, curlSum);
+                DA.SetDataList(20, curlSum);
+
+            if (curlSumP != null)
+                DA.SetDataList(21, curlSumP);
+
+            if (divStress != null)
+                DA.SetDataList(22, divStress);
+
+            if (divVec != null)
+                DA.SetDataList(23, divVec);
         }
 
         /// <summary>

@@ -48,6 +48,12 @@ namespace Krill
 
         public Voxels<double> sumCurl;
 
+        public Voxels<double> sumCurlPstress;
+
+        public Voxels<double> lengthDivStress;
+
+        public Voxels<Vector3d> divOfStress;
+
         //public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs, Voxels<Vector3d> bodyload)
         public OutputResults(Containers.LinearSolution linSol, double PoissonsRatio = 0.25)
         {
@@ -89,9 +95,15 @@ namespace Krill
             princpStress = new Voxels<Vector3d>(origin, delta, n);
             princpDir = new Voxels<Vector3d[]>(origin, delta, n);
             strain = new Voxels<Matrix>(origin, delta, n);
-            stressTensor = new Voxels<Matrix>(origin, delta, n);
+            this.stressTensor = new Voxels<Matrix>(origin, delta, n);
 
             sumCurl = new Voxels<double>(origin, delta, n);
+
+            sumCurlPstress = new Voxels<double>(origin, delta, n);
+
+            lengthDivStress = new Voxels<double>(origin, delta, n);
+
+            divOfStress = new Voxels<Vector3d>(origin, delta, n);
         }
 
         public void UpdateFakeStress(Voxels<Vector3d> dispVoxels)
@@ -790,6 +802,8 @@ namespace Krill
 
         public void CalcCurlOfStressField()
         {
+            NormalizeStressTensor();
+
             for (int ind = 0; ind < noVoxels; ind++)
             {
                 if ((startVoxels.cellValues[ind] & maskbit) == 0)
@@ -818,6 +832,58 @@ namespace Krill
             }
         }
 
+        public void CalcDivOfStressField()
+        {
+            for (int ind = 0; ind < noVoxels; ind++)
+            {
+                if ((startVoxels.cellValues[ind] & maskbit) == 0)
+                    continue;
+
+                Vector3d div = new Vector3d();
+
+                for (int k = 0; k < 3; k++)
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        div[k] += DerStress(ind, i, k, i);
+                    }
+                }
+
+                lengthDivStress.cellValues[ind] = div.SquareLength;
+                divOfStress.cellValues[ind] = div;
+            }
+        }
+
+        private void NormalizeStressTensor()
+        {
+            for (int i = 0; i < noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                Matrix tensor = stressTensor.cellValues[i];
+                double sum = 0;
+
+                for (int j = 0; j < 3; j++)
+                {
+                    for (int k = 0; k < 3; k++)
+                    {
+                        sum += tensor[k, j] * tensor[k, j];
+                    }
+                }
+
+                sum = Math.Sqrt(sum);
+
+                for (int j = 0; j < 3; j++)
+                {
+                    for (int k = 0; k < 3; k++)
+                    {
+                        tensor[k, j] /= sum;
+                    }
+                }
+            }
+        }
+
         private double DerStress(int ind, int a, int b, int dir)
         {
             double dS;
@@ -838,7 +904,7 @@ namespace Krill
                 dS0 = stressTensor.cellValues[n0][a, b];
             else
             {
-                dS0 = 0;
+                dS0 = stressTensor.cellValues[ind][a, b];
                 dx *= 0.5;
             }                
 
@@ -850,13 +916,118 @@ namespace Krill
                 dS2 = stressTensor.cellValues[n2][a, b];
             else
             {
-                dS2 = 0;
+                dS2 = stressTensor.cellValues[ind][a, b];
                 dx *= 0.5;
             }
 
-            dS = (dS0 - dS2) / dx;
+            dS = (dS2 - dS0) / dx;
 
             return dS;
+        }
+
+        public void CalcCurlOfPrinpStress()
+        {
+            for (int ind = 0; ind < noVoxels; ind++)
+            {
+                if ((startVoxels.cellValues[ind] & maskbit) == 0)
+                    continue;
+
+                Vector3d[] curlPstress = new Vector3d[3];
+                double sumLengthCurl = 0;
+
+                for (int pStress = 0; pStress < 3; pStress++)
+                {
+                    Vector3d curlP = new Vector3d();
+
+                    int k = 0;
+                    curlP[k] = DerPrinStress(ind, 2, 1, pStress) - DerPrinStress(ind, 1, 2, pStress);
+
+                    k = 1;
+                    curlP[k] = DerPrinStress(ind, 0, 2, pStress) - DerPrinStress(ind, 2, 0, pStress);
+
+                    k = 2;
+                    curlP[k] = DerPrinStress(ind, 1, 0, pStress) - DerPrinStress(ind, 0, 1, pStress);
+
+                    curlPstress[pStress] = curlP;
+                    sumLengthCurl += curlP.SquareLength;
+                }
+
+                sumCurlPstress.cellValues[ind] = sumLengthCurl;
+            }
+        }
+
+        private double DerPrinStress(int ind, int a, int derDir, int indPs)
+        {
+            double dP;
+            Vector3d dir = princpDir.cellValues[ind][indPs] * princpStress.cellValues[ind][indPs];
+
+            int i = ind;
+
+            princpDir.To3DIndex(ref i, out int j, out int k);
+            Vector3d ind3d = new Vector3d(i, j, k);
+
+            ind3d[derDir] += -1;
+            int n0 = stressTensor.ToLinearIndex((int)ind3d.X, (int)ind3d.Y, (int)ind3d.Z);
+            ind3d[derDir] += 2;
+            int n2 = stressTensor.ToLinearIndex((int)ind3d.X, (int)ind3d.Y, (int)ind3d.Z);
+
+            double dx = princpStress.delta * 2;
+
+            double dv0;
+            if (startVoxels.cellValues[n0] != 0)
+            {
+                Vector3d v0 = CorrectPrincpDir(n0, dir);
+                dv0 = v0[a];
+            }
+            else
+            {
+                dv0 = dir[a];
+                dx *= 0.5;
+            }
+
+            double dv2;
+            if (startVoxels.cellValues[n2] != 0)
+            {
+                Vector3d v2 = CorrectPrincpDir(n2, dir);
+                dv2 = v2[a];
+            }
+            else
+            {
+                dv2 = dir[a];
+                dx *= 0.5;
+            }
+            
+            dP = (dv2 - dv0) / dx;
+
+            return dP;
+        }
+
+        private Vector3d CorrectPrincpDir(int ind, Vector3d dir)
+        {
+            Vector3d[] pDir = new Vector3d[6];
+            double[] angle = new double[6];
+            double minAng = double.MaxValue;
+            int minInd = 0;
+
+            for (int n = 0; n < 3; n++)
+            {
+                pDir[n] = princpDir.cellValues[ind][n] * princpStress.cellValues[ind][n];
+                pDir[n + 3] = -pDir[n];
+
+                angle[n] = Vector3d.VectorAngle(dir, pDir[n]);
+                angle[n + 3] = Vector3d.VectorAngle(dir, pDir[n + 3]);
+            }
+
+            for (int k = 0; k < 6; k++)
+            {
+                if (angle[k] < minAng)
+                {
+                    minAng = angle[k];
+                    minInd = k;
+                }
+            }
+
+            return pDir[minInd];
         }
     }
 }
