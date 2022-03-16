@@ -43,6 +43,11 @@ namespace Krill
 
         public Voxels2d<double> strainDer;
 
+        public Voxels2d<Matrix> stressTensor;
+
+        public Voxels2d<Vector3d> curlVec;
+        public Voxels2d<double> curlLsquared;
+
         //public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs, Voxels<Vector3d> bodyload)
         public OutputResults2d(Containers.LinearSolution2d linSol, double PoissonsRatio = 0.333333)
         {
@@ -83,6 +88,11 @@ namespace Krill
             strain = new Voxels2d<Matrix>(origin, delta, n);
 
             strainDer = new Voxels2d<double>(origin, delta, n);
+
+            stressTensor = new Voxels2d<Matrix>(origin, delta, n);
+
+            curlVec = new Voxels2d<Vector3d>(origin, delta, n);
+            curlLsquared = new Voxels2d<double>(origin, delta, n);
         }
 
         public void UpdateFakeStress(Voxels2d<Vector2d> dispVoxels)
@@ -173,6 +183,14 @@ namespace Krill
                 stressXX.cellValues[i] = E[0, 0];
                 stressYY.cellValues[i] = E[1, 0];
                 stressXY.cellValues[i] = E[2, 0];
+
+                Matrix tensor = new Matrix(2, 2);
+                tensor[0, 0] = stressXX.cellValues[i];
+                tensor[0, 1] = stressXY.cellValues[i];
+                tensor[1, 0] = stressXY.cellValues[i];
+                tensor[1, 1] = stressYY.cellValues[i];
+
+                stressTensor.cellValues[i] = tensor;
             }
         }
 
@@ -414,7 +432,7 @@ namespace Krill
                 }
 
                 int noRows = A.RowCount;
-                            
+
                 // F = (A'*A)^(-1)*A'*b
                 // Borde kanske introducera weightning matrix W för bättre resultat
                 Matrix AT = A.Duplicate();
@@ -475,6 +493,14 @@ namespace Krill
                 stressXX.cellValues[i] = C * (strainXX.cellValues[i] + nu * strainYY.cellValues[i]);
                 stressYY.cellValues[i] = C * (nu * strainXX.cellValues[i] + strainYY.cellValues[i]);
                 stressXY.cellValues[i] = C * (1 - nu) * strainXY.cellValues[i];
+
+                Matrix tensor = new Matrix(2, 2);
+                tensor[0, 0] = stressXX.cellValues[i];
+                tensor[0, 1] = stressXY.cellValues[i];
+                tensor[1, 0] = stressXY.cellValues[i];
+                tensor[1, 1] = stressYY.cellValues[i];
+
+                stressTensor.cellValues[i] = tensor;
             }
         }
 
@@ -491,7 +517,7 @@ namespace Krill
                 double xz = 0;
                 double yz = 0;
 
-                vonMises.cellValues[i] = Math.Sqrt(0.5*((xx-yy)*(xx-yy)+(yy-zz)*(yy-zz)+(zz-xx)*(zz-xx))+3*(xy*xy+xz*xz+yz*yz));
+                vonMises.cellValues[i] = Math.Sqrt(0.5 * ((xx - yy) * (xx - yy) + (yy - zz) * (yy - zz) + (zz - xx) * (zz - xx)) + 3 * (xy * xy + xz * xz + yz * yz));
             }
         }
 
@@ -518,18 +544,109 @@ namespace Krill
                 princpStress.cellValues[i] = EigenValues;
 
                 Vector3d[] vecList = new Vector3d[3];
-                
+
                 for (int j = 0; j < 3; j++)
                 {
                     vecList[j].X = EigenVectors[0, j];
                     vecList[j].Y = EigenVectors[1, j];
                     vecList[j].Z = EigenVectors[2, j];
                 }
-                princpDir.cellValues[i] = vecList;               
+                princpDir.cellValues[i] = vecList;
 
             }
-            
+
+        }
+        public void CalcCurlOfStressField()
+        {
+            NormalizeStressTensor();
+
+            for (int ind = 0; ind < noVoxels; ind++)
+            {
+                if ((startVoxels.cellValues[ind] & maskbit) == 0)
+                    continue;
+
+                Vector3d curl = new Vector3d();
+
+                for (int m = 0; m < 2; m++)
+                {
+                    curl[m] = DerStress(ind, m, 1, 0) - DerStress(ind, m, 0, 1);
+                }
+
+                curlVec.cellValues[ind] = curl;
+                curlLsquared.cellValues[ind] = curl.SquareLength;
+            }
         }
 
+        private double DerStress(int ind, int a, int b, int dir)
+        {
+            double dS;
+
+            int i = ind;
+
+            stressTensor.To2DIndex(ref i, out int j);
+
+            Vector3d ind2d = new Vector3d(i, j, 0);
+
+            double dx = stressTensor.delta * 2;
+
+            ind2d[dir] += -1;
+
+            int n0 = stressTensor.ToLinearIndex((int)ind2d.X, (int)ind2d.Y);
+            double dS0;
+            if (startVoxels.cellValues[n0] != 0)
+                dS0 = stressTensor.cellValues[n0][a, b];
+            else
+            {
+                dS0 = stressTensor.cellValues[ind][a, b];
+                dx *= 0.5;
+            }
+
+            ind2d[dir] += 2;
+
+            int n2 = stressTensor.ToLinearIndex((int)ind2d.X, (int)ind2d.Y);
+            double dS2;
+            if (startVoxels.cellValues[n2] != 0)
+                dS2 = stressTensor.cellValues[n2][a, b];
+            else
+            {
+                dS2 = stressTensor.cellValues[ind][a, b];
+                dx *= 0.5;
+            }
+
+            dS = (dS2 - dS0) / dx;
+
+            return dS;
+        }
+
+        private void NormalizeStressTensor()
+        {
+            for (int i = 0; i < noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                Matrix tensor = stressTensor.cellValues[i];
+                double sum = 0;
+
+                for (int j = 0; j < 2; j++)
+                {
+                    for (int k = 0; k < 2; k++)
+                    {
+                        sum += tensor[k, j] * tensor[k, j];
+                    }
+                }
+
+                sum = Math.Sqrt(sum);
+
+                for (int j = 0; j < 2; j++)
+                {
+                    for (int k = 0; k < 2; k++)
+                    {
+                        tensor[k, j] /= sum;
+                    }
+                }
+            }
+
+        }
     }
 }

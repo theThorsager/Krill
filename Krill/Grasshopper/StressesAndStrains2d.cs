@@ -50,6 +50,9 @@ namespace Krill.Grasshopper
             pManager.AddNumberParameter("PrincpStress3", "s3", "", GH_ParamAccess.list);
 
             pManager.AddNumberParameter("StrainDer", "dsdx", "", GH_ParamAccess.list);
+
+            pManager.AddVectorParameter("CurlOfStress", "curl", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("CurlSquareLength", "curlL2", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -74,6 +77,7 @@ namespace Krill.Grasshopper
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
             outputR.UpdateDsDx(linearSolution.displacments);
+            outputR.CalcCurlOfStressField();
 
             List<Point3d> orgPoints = new List<Point3d>();
 
@@ -96,6 +100,9 @@ namespace Krill.Grasshopper
             List<double> stress3 = new List<double>();
 
             List<double> dsdx = new List<double>();
+
+            List<Vector3d> curlVec = new List<Vector3d>();
+            List<double> curlL2 = new List<double>();
 
             const int maskbit = 0x000000FF;
 
@@ -126,6 +133,9 @@ namespace Krill.Grasshopper
                 stress3.Add(outputR.princpStress.cellValues[i].Z);
 
                 dsdx.Add(outputR.strainDer.cellValues[i]);
+
+                curlVec.Add(outputR.curlVec.cellValues[i]);
+                curlL2.Add(outputR.curlLsquared.cellValues[i]);
             }
 
             // Set data
@@ -164,6 +174,11 @@ namespace Krill.Grasshopper
 
             if (dsdx != null)
                 DA.SetDataList(14, dsdx);
+
+            if (curlVec != null)
+                DA.SetDataList(15, curlVec);
+            if (curlL2 != null)
+                DA.SetDataList(16, curlL2);
         }
 
         /// <summary>
