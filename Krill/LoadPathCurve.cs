@@ -14,20 +14,20 @@ namespace Krill
         public Point3d startPt;
         public Vector3d startVec;
         public Voxels<Vector3d[]> princpDir;
-        // public Voxels<Vector3d> princpStress;
+        public Voxels<Vector3d> princpStress;
 
         public Polyline loadPath;
 
         private double d;
 
         public LoadPathCurve(Voxels<int> startVoxels, Point3d startPt, Vector3d startVec,
-                                Voxels<Vector3d[]> princpDir)
+                                Voxels<Vector3d[]> princpDir, Voxels<Vector3d> princpStress)
         {
             this.startVoxels = startVoxels;
             this.startPt = startPt;
             this.startVec = startVec;
             this.princpDir = princpDir;
-            // this.princpStress = princpStress;
+            this.princpStress = princpStress;
 
             d = startVoxels.delta;
         }
@@ -59,6 +59,8 @@ namespace Krill
 
                 Vector3d oldAveDf;
 
+                int oldSign = Math.Sign(LerpPstress(x0, dfx0));
+
                 for (int j = 0; j < 10; j++)
                 {
                     x1 = x0 + step * aveDf;
@@ -76,6 +78,11 @@ namespace Krill
                 moveVec = aveDf;
 
                 x1 = x0 + step * moveVec;
+
+                int newSign = Math.Sign(LerpPstress(x1, moveVec));
+
+                if (Math.Abs(oldSign - newSign) == 2)
+                    break;
 
                 if (endCond)
                     break;
@@ -271,6 +278,97 @@ namespace Krill
 
             direction = pDir[minInd];
             return direction;
+        }
+
+        private double LerpPstress(Point3d pos, Vector3d previousDir)
+        {
+            pos -= (Vector3d)startVoxels.origin;
+            pos /= d;
+
+            double u = pos.X;
+            double v = pos.Y;
+            double w = pos.Z;
+
+            int i0 = (int)Math.Floor(u - 0.5);
+            int j0 = (int)Math.Floor(v - 0.5);
+            int k0 = (int)Math.Floor(w - 0.5);
+            int i1 = (int)Math.Floor(u - 0.5) + 1;
+            int j1 = (int)Math.Floor(v - 0.5) + 1;
+            int k1 = (int)Math.Floor(w - 0.5) + 1;
+
+            double a = (u - 0.5) - Math.Floor(u - 0.5);
+            double b = (v - 0.5) - Math.Floor(v - 0.5);
+            double c = (w - 0.5) - Math.Floor(w - 0.5);
+
+            Coord i0j0k0 = new Coord(i0, j0, k0);
+            Coord i1j0k0 = new Coord(i1, j0, k0);
+            Coord i0j1k0 = new Coord(i0, j1, k0);
+            Coord i1j1k0 = new Coord(i1, j1, k0);
+            Coord i0j0k1 = new Coord(i0, j0, k1);
+            Coord i1j0k1 = new Coord(i1, j0, k1);
+            Coord i0j1k1 = new Coord(i0, j1, k1);
+            Coord i1j1k1 = new Coord(i1, j1, k1);
+
+            int INDi0j0k0 = startVoxels.CoordToIndex(i0j0k0);
+            int INDi1j0k0 = startVoxels.CoordToIndex(i1j0k0);
+            int INDi0j1k0 = startVoxels.CoordToIndex(i0j1k0);
+            int INDi1j1k0 = startVoxels.CoordToIndex(i1j1k0);
+            int INDi0j0k1 = startVoxels.CoordToIndex(i0j0k1);
+            int INDi1j0k1 = startVoxels.CoordToIndex(i1j0k1);
+            int INDi0j1k1 = startVoxels.CoordToIndex(i0j1k1);
+            int INDi1j1k1 = startVoxels.CoordToIndex(i1j1k1);
+
+            double pStress;
+
+            pStress = (1 - a) * (1 - b) * (1 - c) * CorrectPrincpStress(INDi0j0k0, previousDir)
+                    + a * (1 - b) * (1 - c) * CorrectPrincpStress(INDi1j0k0, previousDir)
+                    + (1 - a) * b * (1 - c) * CorrectPrincpStress(INDi0j1k0, previousDir)
+                    + a * b * (1 - c) * CorrectPrincpStress(INDi1j1k0, previousDir)
+                    + (1 - a) * (1 - b) * c * CorrectPrincpStress(INDi0j0k1, previousDir)
+                    + a * (1 - b) * c * CorrectPrincpStress(INDi1j0k1, previousDir)
+                    + (1 - a) * b * c * CorrectPrincpStress(INDi0j1k1, previousDir)
+                    + a * b * c * CorrectPrincpStress(INDi1j1k1, previousDir);
+
+            return pStress;
+        }
+
+        private double CorrectPrincpStress(int indVoxel, Vector3d prevDir)
+        {
+            Vector3d[] pDir = new Vector3d[6];
+            double[] angle = new double[6];
+            double[] pStress = new double[6];
+            double minAng = double.MaxValue;
+            int minInd = 0;
+
+            // Kolla närmare på vad som händer längst med en kant
+            if ((startVoxels.cellValues[indVoxel] & maskbit) == 0)
+            {
+                return 0;
+            }
+
+
+            for (int k = 0; k < 3; k++)
+            {
+                pDir[k] = princpDir.cellValues[indVoxel][k];
+                pDir[k + 3] = -pDir[k];
+
+                angle[k] = Vector3d.VectorAngle(prevDir, pDir[k]);
+                angle[k + 3] = Vector3d.VectorAngle(prevDir, pDir[k + 3]);
+
+                pStress[k] = princpStress.cellValues[indVoxel][k];
+                pStress[k + 3] = pStress[k];
+            }
+
+            for (int k = 0; k < 6; k++)
+            {
+                if (angle[k] < minAng)
+                {
+                    minAng = angle[k];
+                    minInd = k;
+                }
+            }
+
+            return pStress[minInd];
         }
     }
 }

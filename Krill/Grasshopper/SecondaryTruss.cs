@@ -106,7 +106,7 @@ namespace Krill.Grasshopper
 
                     for (int j = 0; j < 4; j++)
                     {
-                        LoadPathCurve lPath = new LoadPathCurve(linearSolution.mask, truss[i], vecs[j], results.princpDir);
+                        LoadPathCurve lPath = new LoadPathCurve(linearSolution.mask, truss[i], vecs[j], results.princpDir, results.princpStress);
 
                         if (lPath.SecondaryLoadPath(scaleStep, tol, nds, out int ind))
                         {

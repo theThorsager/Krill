@@ -124,7 +124,7 @@ namespace Krill.Grasshopper
             {
                 if (CancellationToken.IsCancellationRequested)
                     return;
-                LoadPathCurve lPath = new LoadPathCurve(startVoxels, startPoints[i], startVectors[i], princpDirections);
+                LoadPathCurve lPath = new LoadPathCurve(startVoxels, startPoints[i], startVectors[i], princpDirections, outputR.princpStress);
 
                 lPath.ConstructLoadPath(scaleDelta);
 
