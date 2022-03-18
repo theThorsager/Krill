@@ -247,7 +247,7 @@ namespace Krill
             int vols = startVoxels.cellValues[i] >> 20;
             vols += startVoxels.cellValues[j] >> 20;
             double factor = (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
-            xi_vec *= factor * bond_stiffness * vol / (l*l*l);
+            xi_vec *= bond_stiffness * vol / (l*l*l);
 
             densities.cellValues[i] += xi_vec;
         }
@@ -434,8 +434,8 @@ namespace Krill
                     newcuttoff = f;
             }
 
-            forceVoxels.cellValues[i] += factor * f * xi_eta_vec / y;
-            utilization.cellValues[i] += Math.Sqrt(Math.Abs(factor * f));
+            forceVoxels.cellValues[i] += f * xi_eta_vec / y;
+            utilization.cellValues[i] += Math.Sqrt(Math.Abs(f));
         }
         
         public void UpdateDisp(double c)
@@ -678,7 +678,7 @@ namespace Krill
             vols += startVoxels.cellValues[j] >> 20;
             double factor = (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
 
-            xi_vec *= factor * bond_stiffness * vol / (l * l * l);
+            xi_vec *= bond_stiffness * vol / (l * l * l);
 
             return -xi_vec;
         }

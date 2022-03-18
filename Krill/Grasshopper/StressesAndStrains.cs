@@ -84,6 +84,7 @@ namespace Krill.Grasshopper
             outputR.UpdateStresses();
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
+            outputR.NormalizeStressTensor();
             outputR.CalcCurlOfStressField();
             outputR.CalcCurlOfPrinpStress();
             outputR.CalcDivOfStressField();

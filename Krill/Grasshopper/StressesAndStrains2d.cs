@@ -77,6 +77,7 @@ namespace Krill.Grasshopper
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
             outputR.UpdateDsDx(linearSolution.displacments);
+            outputR.NormalizeStressTensor();
             outputR.CalcCurlOfStressField();
 
             List<Point3d> orgPoints = new List<Point3d>();

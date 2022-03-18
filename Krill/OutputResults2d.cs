@@ -97,6 +97,11 @@ namespace Krill
 
         public void UpdateFakeStress(Voxels2d<Vector2d> dispVoxels)
         {
+            // Make the stress strain curve stranger
+            const double low = 0.05;
+            const double high = 0.5;
+            const double fade = 0.1;
+
             for (int i = 0; i < noVoxels; i++)
             {
                 if ((startVoxels.cellValues[i] & maskbit) == 0)
@@ -119,8 +124,20 @@ namespace Krill
                         int vols = startVoxels.cellValues[i] >> 20;
                         vols += startVoxels.cellValues[j] >> 20;
                         double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
-                        s *= bond_stiffness * vol;
-                        S[ii, 0] = s;
+                        s *= bond_stiffness;
+
+                        if (relaxTension && s > low * oldcuttoff)
+                        {
+                            double fa = s / oldcuttoff;
+                            if (fa < low + fade)
+                                s *= -(fa - (low + fade)) / fade;
+                            else if (fa < high - fade)
+                                s = 0;
+                            else if (fa < high)
+                                s *= (fa - (high - fade)) / fade;
+                        }
+
+                        S[ii, 0] = s * factorS;
 
                         A[ii, 0] = n.X * n.X;
                         A[ii, 1] = n.Y * n.Y;
@@ -136,8 +153,20 @@ namespace Krill
                         int vols = startVoxels.cellValues[i] >> 20;
                         vols += startVoxels.cellValues[j] >> 20;
                         double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
-                        s *= bond_stiffness * vol;
-                        S[noBonds / 2 + ii, 0] = s;
+                        s *= bond_stiffness;
+
+                        if (relaxTension && s > low * oldcuttoff)
+                        {
+                            double fa = s / oldcuttoff;
+                            if (fa < low + fade)
+                                s *= -(fa - (low + fade)) / fade;
+                            else if (fa < high - fade)
+                                s = 0;
+                            else if (fa < high)
+                                s *= (fa - (high - fade)) / fade;
+                        }
+
+                        S[noBonds / 2 + ii, 0] = s * factorS;
 
                         A[noBonds / 2 + ii, 0] = n.X * n.X;
                         A[noBonds / 2 + ii, 1] = n.Y * n.Y;
@@ -165,7 +194,7 @@ namespace Krill
                 //    A[noRows - 2, 0] = 1 * factorA;
                 //    S[noRows - 2, 0] = Math.Abs(springs.cellValues[i].X * d.X + bodyload.cellValues[i].X) * factor * Math.Sign(E[0, 0]);
                 //}
-                
+
                 //if (springs.cellValues[i].Y != 0)
                 //{
                 //    A[noRows - 1, 1] = 1 * factorA;
@@ -558,8 +587,6 @@ namespace Krill
         }
         public void CalcCurlOfStressField()
         {
-            NormalizeStressTensor();
-
             for (int ind = 0; ind < noVoxels; ind++)
             {
                 if ((startVoxels.cellValues[ind] & maskbit) == 0)
@@ -618,7 +645,7 @@ namespace Krill
             return dS;
         }
 
-        private void NormalizeStressTensor()
+        public void NormalizeStressTensor()
         {
             for (int i = 0; i < noVoxels; i++)
             {

@@ -802,8 +802,6 @@ namespace Krill
 
         public void CalcCurlOfStressField()
         {
-            NormalizeStressTensor();
-
             for (int ind = 0; ind < noVoxels; ind++)
             {
                 if ((startVoxels.cellValues[ind] & maskbit) == 0)
@@ -854,7 +852,7 @@ namespace Krill
             }
         }
 
-        private void NormalizeStressTensor()
+        public void NormalizeStressTensor()
         {
             for (int i = 0; i < noVoxels; i++)
             {
