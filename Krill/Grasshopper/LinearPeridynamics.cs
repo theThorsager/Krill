@@ -284,43 +284,6 @@ namespace Krill.Grasshopper
             //        break;
             //}
 
-            //double totDisp = double.MaxValue;
-            //ReportProgress(Id, 0);
-            //// Modify Weights
-            //for ( ; i < settings.n_timesteps; i++)
-            //{
-            //    // compute the acceleration
-            //    model.UpdateForce();
-            //    // Verlet integration, to update pos
-            //    double c = model.CalculateDampening();
-            //    model.UpdateDisp(c);
-
-            //    double residual = model.ComputeResidual(F);
-
-            //    //if (residual < tolerance)
-            //    if (i % 10 == 0)
-            //    {
-            //        double oldtotDisp = totDisp;
-            //        totDisp = model.TotalDisplacement();
-
-            //        // If the change has not made the structure stiffer, break
-            //        if (totDisp > oldtotDisp * 1.001)
-            //            break;
-
-            //        model.ModifyWeightsUti();
-
-            //        ReportProgress(Id, totDisp);
-            //    }
-
-            //    if (i % 10 == 0)
-            //    {
-            //        if (CancellationToken.IsCancellationRequested) return;
-
-            //        conduit.SetDisplacments(model.dispVoxels);
-            //        conduit.Update();
-            //    }
-            //}
-
             // Display data
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
