@@ -62,7 +62,7 @@ namespace Krill
                 for (int j = 0; j < 10; j++)
                 {
                     x1 = x0 + step * aveDf;
-                    Vector3d dfx1 = CLKFilterLinearMoveVec(x1, oldVec, out endCond);
+                    Vector3d dfx1 = CLKFilterLinearMoveVec(x1, dfx0, out endCond);
                     oldAveDf = aveDf;
                     aveDf = (dfx0+ dfx1)*0.5;
                                   
@@ -119,7 +119,7 @@ namespace Krill
                 for (int j = 0; j < 10; j++)
                 {
                     x1 = x0 + step * aveDf;
-                    Vector3d dfx1 = CLKFilterLinearMoveVec(x1, oldVec, out endCond);
+                    Vector3d dfx1 = CLKFilterLinearMoveVec(x1, dfx0, out endCond);
                     oldAveDf = aveDf;
                     aveDf = (dfx0 + dfx1) * 0.5;
 

@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using Grasshopper.Kernel;
 using Rhino.Geometry;
 
+using System.Linq;
+
 namespace Krill.Grasshopper
 {
     public class SecondaryTruss2d : GH_Component
@@ -53,7 +55,7 @@ namespace Krill.Grasshopper
 
             List<Curve> curves = new List<Curve>();
             DA.GetDataList(1, curves);
-            if (curves is null)
+            if (curves is null || curves.Any(x => x is null))
                 return;
 
             List<Polyline> trusses = new List<Polyline>();
@@ -102,7 +104,7 @@ namespace Krill.Grasshopper
 
                     for (int j = 0; j < 2; j++)
                     {
-                        LoadPathCurve2d lPath = new LoadPathCurve2d(linearSolution.mask, truss[i], vecs[j], results.princpDir);
+                        LoadPathCurve2d lPath = new LoadPathCurve2d(linearSolution.mask, truss[i], vecs[j], results.princpDir, results.princpStress);
 
                         if (lPath.SecondaryLoadPath(scaleStep, tol, nds, out int ind))
                         {

@@ -114,6 +114,7 @@ namespace Krill.Grasshopper
 
             Voxels2d<int> startVoxels = linearSolution.mask;
             Voxels2d<Vector3d[]> princpDirections = outputR.princpDir;
+            Voxels2d<Vector3d> princpStress = outputR.princpStress;
            
             int n = startVoxels.n;
 
@@ -124,7 +125,7 @@ namespace Krill.Grasshopper
             {
                 if (CancellationToken.IsCancellationRequested)
                     return;
-                LoadPathCurve2d lPath = new LoadPathCurve2d(startVoxels, startPoints[i], startVectors[i], princpDirections);
+                LoadPathCurve2d lPath = new LoadPathCurve2d(startVoxels, startPoints[i], startVectors[i], princpDirections, princpStress);
 
                 lPath.ConstructLoadPath(scaleDelta);
 

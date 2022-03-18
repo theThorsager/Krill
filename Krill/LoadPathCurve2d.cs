@@ -14,20 +14,20 @@ namespace Krill
         public Point2d startPt;
         public Vector2d startVec;
         public Voxels2d<Vector3d[]> princpDir;
-        // public Voxels<Vector3d> princpStress;
+        public Voxels2d<Vector3d> princpStress;
 
         public Polyline loadPath;
 
         private double d;
 
         public LoadPathCurve2d(Voxels2d<int> startVoxels, Point3d startPt, Vector3d startVec,
-                                Voxels2d<Vector3d[]> princpDir)
+                                Voxels2d<Vector3d[]> princpDir, Voxels2d<Vector3d> princpStress)
         {
             this.startVoxels = startVoxels;
             this.startPt = new Point2d(startPt.X, startPt.Y);
             this.startVec = new Vector2d(startVec.X, startVec.Y);
             this.princpDir = princpDir;
-            // this.princpStress = princpStress;
+            this.princpStress = princpStress;
 
             d = startVoxels.delta;
         }
@@ -59,12 +59,14 @@ namespace Krill
 
                 Vector2d oldAveDf;
 
+                int oldSign = Math.Sign(LerpPstress(x0, dfx0));
+
                 for (int j = 0; j < 10; j++)
                 {
                     x1 = x0 + step * aveDf;
-                    Vector2d dfx1 = CLKFilterLinearMoveVec(x1, oldVec, out endCond);
+                    Vector2d dfx1 = CLKFilterLinearMoveVec(x1, dfx0, out endCond);
                     oldAveDf = aveDf;
-                    aveDf = (dfx0+ dfx1)*0.5;
+                    aveDf = (dfx0 + dfx1) * 0.5;
                                   
                     if (j == 9)
                         break;
@@ -76,6 +78,11 @@ namespace Krill
                 moveVec = aveDf;
 
                 x1 = x0 + step * moveVec;
+
+                int newSign = Math.Sign(LerpPstress(x1, moveVec));
+
+                if (Math.Abs(oldSign - newSign) == 2)
+                    break;
 
                 if (endCond)
                     break;
@@ -120,7 +127,7 @@ namespace Krill
                 for (int j = 0; j < 10; j++)
                 {
                     x1 = x0 + step * aveDf;
-                    Vector2d dfx1 = CLKFilterLinearMoveVec(x1, oldVec, out endCond);
+                    Vector2d dfx1 = CLKFilterLinearMoveVec(x1, dfx0, out endCond);
                     oldAveDf = aveDf;
                     aveDf = (dfx0 + dfx1) * 0.5;
 
@@ -188,7 +195,8 @@ namespace Krill
             int INDi1j1k0 = startVoxels.CoordToIndex(i1j1k0);
 
             // Väldigt basic break-villkor, uppdatera och implementera ett bättre
-            if ((startVoxels.cellValues[INDi1j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi0j0k0] & maskbit) == 0)
+            if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0 &&
+                (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0)
                 basicEnd = true;
 
             dir.X = (1 - a) * (1 - b) * CorrectPrincpDir(INDi0j0k0, previousDir).X
@@ -210,7 +218,7 @@ namespace Krill
             Vector3d[] pDir = new Vector3d[6];
             double[] angle = new double[6];
             double minAng = double.MaxValue;
-            int minInd = 0;
+            int minInd = -1;
             Vector2d direction;
 
             Vector3d prevDir3d = new Vector3d(prevDir.X, prevDir.Y, 0);
@@ -220,8 +228,7 @@ namespace Krill
             {
                 // Det fungerar poteniellt bättre än 0-vektorn, mer tester behövs
                 return prevDir;
-            }
-                
+            }                
             
             for (int k = 0; k < 3; k++)
             {
@@ -242,7 +249,84 @@ namespace Krill
             }
 
             direction = new Vector2d(pDir[minInd].X, pDir[minInd].Y);
+
             return direction;
+        }
+
+        private double LerpPstress(Point2d pos, Vector2d previousDir)
+        {
+            pos -= new Vector2d(startVoxels.origin.X, startVoxels.origin.Y);
+            pos /= d;
+
+            double u = pos.X;
+            double v = pos.Y;
+
+            int i0 = (int)Math.Floor(u - 0.5);
+            int j0 = (int)Math.Floor(v - 0.5);
+            int i1 = (int)Math.Floor(u - 0.5) + 1;
+            int j1 = (int)Math.Floor(v - 0.5) + 1;
+
+            double a = (u - 0.5) - Math.Floor(u - 0.5);
+            double b = (v - 0.5) - Math.Floor(v - 0.5);
+
+            Coord i0j0k0 = new Coord(i0, j0);
+            Coord i1j0k0 = new Coord(i1, j0);
+            Coord i0j1k0 = new Coord(i0, j1);
+            Coord i1j1k0 = new Coord(i1, j1);
+
+            int INDi0j0k0 = startVoxels.CoordToIndex(i0j0k0);
+            int INDi1j0k0 = startVoxels.CoordToIndex(i1j0k0);
+            int INDi0j1k0 = startVoxels.CoordToIndex(i0j1k0);
+            int INDi1j1k0 = startVoxels.CoordToIndex(i1j1k0);
+
+            double pStress;
+
+            pStress = (1 - a) * (1 - b) * CorrectPrincpStress(INDi0j0k0, previousDir)
+                      + a * (1 - b) * CorrectPrincpStress(INDi1j0k0, previousDir)
+                      + (1 - a) * b * CorrectPrincpStress(INDi0j1k0, previousDir)
+                      + a * b * CorrectPrincpStress(INDi1j1k0, previousDir);
+
+            return pStress;
+        }
+
+        private double CorrectPrincpStress(int indVoxel, Vector2d prevDir)
+        {
+            Vector3d[] pDir = new Vector3d[6];
+            double[] angle = new double[6];
+            double[] pStress = new double[6];
+            double minAng = double.MaxValue;
+            int minInd = 0;
+
+            Vector3d prevDir3d = new Vector3d(prevDir.X, prevDir.Y, 0);
+
+            // Kolla närmare på vad som händer längst med en kant
+            if ((startVoxels.cellValues[indVoxel] & maskbit) == 0)
+            {
+                return 0;
+            }
+
+            for (int k = 0; k < 3; k++)
+            {
+                pDir[k] = princpDir.cellValues[indVoxel][k];
+                pDir[k + 3] = -pDir[k];
+
+                angle[k] = Vector3d.VectorAngle(prevDir3d, pDir[k]);
+                angle[k + 3] = Vector3d.VectorAngle(prevDir3d, pDir[k + 3]);
+
+                pStress[k] = princpStress.cellValues[indVoxel][k];
+                pStress[k + 3] = pStress[k];
+            }
+
+            for (int k = 0; k < 6; k++)
+            {
+                if (angle[k] < minAng)
+                {
+                    minAng = angle[k];
+                    minInd = k;
+                }
+            }
+
+            return pStress[minInd];
         }
     }
 }
