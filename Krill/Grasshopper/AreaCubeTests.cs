@@ -4,6 +4,8 @@ using System.Collections.Generic;
 using Grasshopper.Kernel;
 using Rhino.Geometry;
 
+using System.Linq;
+
 namespace Krill.Grasshopper
 {
     public class AreaCubeTests : GH_Component
@@ -40,6 +42,7 @@ namespace Krill.Grasshopper
             pManager.AddLineParameter("lines", "l", "", GH_ParamAccess.list);
             pManager.AddBoxParameter("box", "b", "", GH_ParamAccess.list);
             pManager.AddPointParameter("pts", "pts", "", GH_ParamAccess.list);
+            pManager.AddTextParameter("warning", "w", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -62,25 +65,37 @@ namespace Krill.Grasshopper
             Mesh m = null;
             DA.GetData(0, ref m);
 
-            MeshToPoints meshToPoints = new MeshToPoints(m, 1, 5);
+            //MeshToPoints meshToPoints = new MeshToPoints(m, 1, 5);
 
-            meshToPoints.FillBoundaryValues();
-            meshToPoints.FillInternalValues();
-            meshToPoints.RefineBoundaries();
+            //meshToPoints.FillBoundaryValues();
+            //meshToPoints.FillInternalValues();
+            //meshToPoints.RefineBoundaries();
 
-            truss.SetVoxels(meshToPoints.voxels);
+            //truss.SetVoxels(meshToPoints.voxels);
 
-            truss.areas[0] = 12.0;
-            if (truss.FindRestOfArea())
+            //truss.areas[0] = 12.0;
+            //if (truss.FindRestOfArea())
+            //{
+            //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "The elements do not fit in the system.");
+            //}
+
+            var forces = truss.model.Elements.Select(x => 1.0).ToList();
+            forces[0] = -1.0;
+
+            var res = truss.CheckAngles(forces);
+            res.AddRange(truss.CheckAnglesConcentrated(forces, new List<int>() { 0 }));
+
+            List<string> warnings = new List<string>();
+            foreach (var warning in res)
             {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "The elements do not fit in the system.");
+                warnings.Add($"{warning.pt} \n{warning.A} \n{warning.B} \n{warning.excetrcFromBeingSpanned} \n{warning.angle} \n{warning.concentrated}");
             }
-
 
             DA.SetDataList(0, truss.areas);
             DA.SetDataList(1, truss.ToLines());
-            DA.SetDataList(2, truss.boundingBoxes);
-            DA.SetDataList(3, meshToPoints.voxels.GetPointsNotAt(0));
+            //DA.SetDataList(2, truss.boundingBoxes);
+            //DA.SetDataList(3, meshToPoints.voxels.GetPointsNotAt(0));
+            DA.SetDataList(4, warnings);
         }
 
         /// <summary>

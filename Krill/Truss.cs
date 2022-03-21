@@ -27,6 +27,18 @@ namespace Krill
         }
     }
 
+    public class AngleWarning
+    {
+        public Point3d pt;
+        public Vector3d A;
+        public Vector3d B;
+        public double angle;
+        public double strutForce;
+        // something to tell how well it's supported by multiple ties
+        public double excetrcFromBeingSpanned;
+        public bool concentrated = false;
+    }
+
     public class Truss
     {
         // Do we need the voxels here
@@ -88,6 +100,25 @@ namespace Krill
 
         }
 
+        public List<int> GetConcentrated(List<bool> locked)
+        {
+            List<int> indices2 = new List<int>();
+            for (int i = 0; i < locked.Count; i++)
+            {
+                Node node = model.Nodes[i];
+                List<int> indices = new List<int>();
+                for (int j = 0; j < model.Elements.Count; j++)
+                {
+                    if (model.Elements[j].Nodes.Contains(node))
+                    {
+                        indices.Add(j);
+                    }
+                }
+                if (indices.Count == 1)
+                    indices2.Add(indices[0]);
+            }
+            return indices2;
+        }
 
         public void SetAreasForTies(List<double> forces)
         {
@@ -137,6 +168,181 @@ namespace Krill
                 maxBox.Add(boxSDF.BiggestBox(ToRhino(model.Nodes[i].Location)));
         }
 
+        public List<AngleWarning> CheckAnglesConcentrated(List<double> forces, List<int> concentrated)
+        {
+            var warnings = new List<AngleWarning>();
+
+            for (int ii = 0; ii < concentrated.Count; ii++)
+            {
+                int i = concentrated[ii];
+                // check the nodes it connects to and update their areas
+                for (int k = 0; k < 2; k++)
+                {
+                    Node node = model.Elements[i].Nodes[k];
+                    Vector3d theNormal = ToRhino(node.Location - model.Elements[i].Nodes[(k + 1) % 2].Location);
+                    theNormal.Unitize();
+                    int index = model.Nodes.IndexOf(node);
+                    // Find all elements which connects to this node
+                    List<int> indices = new List<int>();
+                    for (int j = 0; j < areas.Count; j++)
+                    {
+                        if (j != i && model.Elements[j].Nodes.Contains(node))
+                        {
+                            indices.Add(j);
+                        }
+                    }
+                    // Get relevant normals
+                    var normals = new List<Vector3d>();
+                    for (int j = 0; j < indices.Count; j++)
+                    {
+                        var nodes = model.Elements[indices[j]].Nodes;
+                        Vector3d normal = ToRhino(nodes.First(x => x != node).Location - node.Location);
+                        normal.Unitize();
+                        normals.Add(normal);
+                    }
+
+                    double minAngle = Math.PI;
+                    int J = -1;
+                    for (int j = 0; j < normals.Count; j++)
+                    {
+                        double angle = Vector3d.VectorAngle(theNormal, normals[j]);
+                        if (angle < minAngle)
+                        {
+                            minAngle = angle;
+                            J = j;
+                        }
+                    }
+                    if (J != -1 && (true || minAngle > Math.PI / 4))
+                    {
+                        warnings.Add(new AngleWarning()
+                        {
+                            pt = ToRhino(node.Location),
+                            A = theNormal,
+                            B = normals[J],
+                            angle = minAngle,
+                            strutForce = forces[i],
+                            excetrcFromBeingSpanned = double.NaN,
+                            concentrated = true
+                        });
+                    }
+
+                }
+            }
+
+            return warnings;
+        }
+
+        public List<AngleWarning> CheckAngles(List<double> forces)
+        {
+            var warnings = new List<AngleWarning>();
+
+            for (int i = 0; i < model.Nodes.Count; i++)
+            {
+                Node node = model.Nodes[i];
+                // Find all elements which connects to this node
+                List<int> indices = new List<int>();
+                for (int j = 0; j < areas.Count; j++)
+                {
+                    if (model.Elements[j].Nodes.Contains(node))
+                    {
+                        indices.Add(j);
+                    }
+                }
+                // Get relevant normals
+                var normals = new List<Vector3d>();
+                var normalsS = new List<Vector3d>();
+                var normalsT = new List<Vector3d>();
+                var subForces = new List<double>();
+                var subForcesS = new List<double>();
+                for (int j = 0; j < indices.Count; j++)
+                {
+                    var nodes = model.Elements[indices[j]].Nodes;
+                    Vector3d normal = ToRhino(nodes.First(x => x != node).Location - node.Location);
+                    normal.Unitize();
+
+                    if (forces[indices[j]] < 0)
+                    {
+                        normalsS.Add(normal);
+                        subForcesS.Add(forces[indices[j]]);
+                    }
+                    else
+                        normalsT.Add(normal);
+
+                    normals.Add(normal);
+                    subForces.Add(forces[indices[j]]);
+                }
+
+                // Two perpendicular ties is the same as the strut being able to be spanned by the ties
+                for (int j = 0; j < normalsS.Count; j++)
+                {
+                    var angles = new List<double>();
+                    for (int k = 0; k < normalsT.Count; k++)
+                    {
+                        angles.Add(Vector3d.VectorAngle(normalsS[j], normalsT[k]));
+                    }
+
+                    for (int k = 0; k < normalsT.Count; k++)
+                    {
+                        double angle = angles[k];
+                        // check if any is less than 45
+                        if (angle < Math.PI / 4.0 || true)
+                        {
+                            double spanned = Math.PI;
+                            // check if it is spanned by more than one tie
+                            for (int kk = 0; kk < normalsT.Count; kk++)
+                            {
+                                if (kk == k)
+                                    continue;
+                                // Think like great arc distance, if the sum of the distances is the same as the distance, then they are on the same arc
+                                double temp = angle + angles[k] - Vector3d.VectorAngle(normalsT[k], normalsT[kk]);
+                                spanned = temp < spanned ? temp : spanned;
+
+                                // Add check for if it is spanned by three ties
+                                for (int kkk = 0; kkk < normalsT.Count; kkk++)
+                                {
+                                    if (kkk == k || kkk == kk)
+                                        continue;
+
+                                    Rhino.Geometry.Matrix A = new Rhino.Geometry.Matrix(3,3);
+                                    Rhino.Geometry.Matrix n = new Rhino.Geometry.Matrix(3, 1);
+                                    for (int ii = 0; ii < 3; ii++)
+                                    {
+                                        A[ii, 0] = normalsT[k][ii];
+                                        A[ii, 1] = normalsT[kk][ii];
+                                        A[ii, 2] = normalsT[kkk][ii];
+                                        n[ii, 0] = normalsS[j][ii];
+                                    }
+                                    A.Invert(1e-3);
+                                    var w = A * n;
+
+                                    temp = Math.Min(w[0, 0], Math.Min(w[1, 0], w[2, 0]));
+                                    temp = temp > 0 ? 0 : -temp;
+
+                                    spanned = temp < spanned ? temp : spanned;
+                                }
+                            }
+                            
+                            // Less than 30 is always pretty bad
+                            if (angle < Math.PI / 6 || spanned > 1e-3 || true)
+                            {
+                                warnings.Add(new AngleWarning()
+                                {
+                                    pt = ToRhino(node.Location),
+                                    A = normalsS[j],
+                                    B = normalsT[k],
+                                    angle = angle,
+                                    strutForce = subForcesS[j],
+                                    excetrcFromBeingSpanned = spanned
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+
+            return warnings;
+        }
+
         public bool FindRestOfArea()
         {
             bool problem = false;
@@ -183,7 +389,6 @@ namespace Krill
                             normal.Y = Math.Abs(normal.Y);
                             normal.Z = Math.Abs(normal.Z);
                             normals.Add(normal);
-
                         }
 
                         // find the cuboid that fits them all the best
