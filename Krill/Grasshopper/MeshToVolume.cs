@@ -29,7 +29,7 @@ namespace Krill.Grasshopper
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddMeshParameter("mesh", "mesh", "", GH_ParamAccess.item);
-            pManager.AddMeshParameter("bc", "m", "", GH_ParamAccess.item);
+            pManager.AddNumberParameter("d", "d", "", GH_ParamAccess.item, 1);
             pManager[1].Optional = true;
 
         }
@@ -42,6 +42,7 @@ namespace Krill.Grasshopper
             pManager.AddPointParameter("ptsB", "ptsB", "", GH_ParamAccess.list);
             pManager.AddPointParameter("ptsI", "ptsI", "", GH_ParamAccess.list);
             pManager.AddPointParameter("ptsO", "ptsO", "", GH_ParamAccess.list);
+            pManager.AddMeshParameter("mesh", "m", "", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -53,8 +54,8 @@ namespace Krill.Grasshopper
         {
             Mesh mesh = null;
             DA.GetData(0, ref mesh);
-            Mesh mesh2 = null;
-            DA.GetData(1, ref mesh2);
+            double d = 1;
+            DA.GetData(1, ref d);
             Stopwatch watch = new Stopwatch();
 
             //BoundaryCondition bcs = null;
@@ -63,28 +64,31 @@ namespace Krill.Grasshopper
 
             if (!(mesh is null))
             {
-                MeshToPoints meshToPoints = new MeshToPoints(mesh, 0.05, 3.01);
+                MeshToPoints meshToPoints = new MeshToPoints(mesh, d, 3.01);
 
                 meshToPoints.FillBoundaryValues();
 
-                meshToPoints.FillInternalValues();
+                meshToPoints.FillInternalValues2();
 
                 meshToPoints.RefineBoundaries();
 
                 //if (!(bcs is null))
                 //    meshToPoints.SetBC(bcs, 3.01, 8);
 
-                watch.Start();
                 //conduit = new VoxelConduit();
                 //conduit.mask = meshToPoints.voxels;
                 //conduit.Enabled = true;
                 //conduit.Update();
-                watch.Stop();
-                DA.SetDataList(0, meshToPoints.voxels.GetPointsAt(1));
-                DA.SetDataList(1, meshToPoints.voxels.GetPointsAt(2));
+                //DA.SetDataList(0, meshToPoints.voxels.GetPointsAt(1));
+                //DA.SetDataList(1, meshToPoints.voxels.GetPointsAt(2));
                 //DA.SetDataList(2, meshToPoints.voxels.GetPointsAt(0));
                 //DA.SetDataList(1, meshToPoints.points);
 
+                watch.Start();
+                Mesh res = Voxels<int>.GetBoundaryMesh(meshToPoints.voxels);
+                watch.Stop();
+
+                DA.SetData(3, res);
 
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Remark, $"Elapsed Time is {watch.ElapsedMilliseconds} ms");
 

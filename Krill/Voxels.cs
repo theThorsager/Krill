@@ -148,5 +148,89 @@ namespace Krill
             }
         }
 
+        public static Mesh GetBoundaryMesh(Voxels<int> voxels)
+        {
+            int n = voxels.n;
+
+            List<MeshFace> faces = new List<MeshFace>();
+            Dictionary<int, int> map = new Dictionary<int, int>();
+
+            List<Point3d> points = new List<Point3d>();
+
+            int I = voxels.ToLinearIndex(1, 0, 0);
+            int J = voxels.ToLinearIndex(0, 1, 0);
+            int K = voxels.ToLinearIndex(0, 0, 1);
+
+            for (int k = 0; k < n - 1; k++)
+            {
+                for (int j = 0; j < n - 1; j++)
+                {
+                    for (int i = 0; i < n - 1; i++)
+                    {
+                        int Ind = voxels.ToLinearIndex(i, j, k);
+                        bool current = voxels.cellValues[Ind] == 0;
+                        if (current ^ voxels.cellValues[Ind + I] == 0)
+                        {
+                            MeshFace face = current ?
+                                new MeshFace(Ind + I, Ind + I + K, Ind + J + I + K, Ind + I + J) :
+                                new MeshFace(Ind + I, Ind + I + J, Ind + J + I + K, Ind + I + K);
+                            faces.Add(face);
+                            addToMap(map, points, voxels, face);
+                        }
+                        if (current ^ voxels.cellValues[Ind + J] == 0)
+                        {
+                            MeshFace face = current ?
+                                new MeshFace(Ind + J, Ind + J + I, Ind + J + I + K, Ind + J + K) :
+                                new MeshFace(Ind + J, Ind + J + K, Ind + J + I + K, Ind + J + I);
+                            faces.Add(face);
+                            addToMap(map, points, voxels, face);
+                        }
+                        if (current ^ voxels.cellValues[Ind + K] == 0)
+                        {
+                            MeshFace face = current ?
+                                new MeshFace(Ind + K, Ind + K + J, Ind + J + I + K, Ind + I + K) :
+                                new MeshFace(Ind + K, Ind + K + I, Ind + J + I + K, Ind + K + J);
+                            faces.Add(face);
+                            addToMap(map, points, voxels, face);
+                        }
+                    }
+                }
+            }
+
+            faces = faces.Select(x => new MeshFace(map[x.A], map[x.B], map[x.C], map[x.D])).ToList();
+
+            Mesh mesh = new Mesh();
+            mesh.Faces.AddFaces(faces);
+            mesh.Vertices.AddVertices(points);
+
+            //mesh.MergeAllCoplanarFaces(1e-3);
+
+            return mesh;
+        }
+
+        private static void addToMap(Dictionary<int, int> map, List<Point3d> points, Voxels<int> voxels, MeshFace face)
+        {
+            Vector3d off = -0.5 * new Vector3d(voxels.delta, voxels.delta, voxels.delta);
+            if (!map.ContainsKey(face.A))
+            {
+                map.Add(face.A, points.Count);
+                points.Add(voxels.IndexToPoint(face.A) + off);
+            }
+            if (!map.ContainsKey(face.B))
+            {
+                map.Add(face.B, points.Count);
+                points.Add(voxels.IndexToPoint(face.B) + off);
+            }
+            if (!map.ContainsKey(face.C))
+            {
+                map.Add(face.C, points.Count);
+                points.Add(voxels.IndexToPoint(face.C) + off);
+            }
+            if (!map.ContainsKey(face.D))
+            {
+                map.Add(face.D, points.Count);
+                points.Add(voxels.IndexToPoint(face.D) + off);
+            }
+        }
     }
 }

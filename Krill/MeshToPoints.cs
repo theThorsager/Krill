@@ -220,6 +220,28 @@ namespace Krill
             }
         }
 
+        public void FillInternalValues2()
+        {
+            // Find a cell with the right value
+            // check if it is inside the mesh, else iterate until the we pass a border again
+            // Uses a global index such that a new interior point is found each time the method is called, until all points are found
+            for (; index < voxels.cellValues.Length; index++)
+            {
+                if (voxels.cellValues[index] != 0)
+                    continue;
+
+                if (mesh.IsPointInside(voxels.IndexToPoint(index), 1e-3, true))
+                {
+                    FloodFill(voxels.IndexToCoord(index), 0, 2);
+                }
+                else
+                {
+                    FloodFill(voxels.IndexToCoord(index), 0, 8);
+                }
+            }
+
+            voxels.SetValues(voxels, 8, 0);
+        }
 
         public void FillInternalValues()
         {
