@@ -42,6 +42,11 @@ namespace Krill
             voxels = new Voxels<int>(origin, Delta, n);
         }
 
+        public MeshToPoints(Voxels<int> mask)
+        {
+            voxels = mask;
+        }
+
         public void FillBoundaryValues(int newvalue = 1)
         {
             double del = voxels.delta / Math.Sqrt(2);

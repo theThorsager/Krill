@@ -25,6 +25,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
+            pManager.AddParameter(new Param.LinearPeridynamicsModelParam());
             pManager.AddPointParameter("pts", "pts", "", GH_ParamAccess.list);
             pManager.AddIntegerParameter("a", "a", "", GH_ParamAccess.list);
             pManager.AddIntegerParameter("b", "b", "", GH_ParamAccess.list);
@@ -48,18 +49,25 @@ namespace Krill.Grasshopper
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
+            Param.LinearPeridynamicsModelGoo linPeriGoo = null;
+            DA.GetData(0, ref linPeriGoo);
+
+            if (linPeriGoo is null || linPeriGoo.Value is null)
+                return;
+
+
             var nodes = new List<Point3d>();
             var a = new List<int>();
             var b = new List<int>();
             var locked = new List<bool>();
-            DA.GetDataList(0, nodes);
-            DA.GetDataList(1, a);
-            DA.GetDataList(2, b);
-            DA.GetDataList(3, locked);
+            DA.GetDataList(1, nodes);
+            DA.GetDataList(2, a);
+            DA.GetDataList(3, b);
+            DA.GetDataList(4, locked);
 
             Krill.Truss truss = new Krill.Truss(nodes, locked, a, b);
 
-            //truss.SetVoxels(mask);  // Lär vilja slänga in en LinearSolution
+            truss.SetVoxels(linPeriGoo.Value.mask);  // Lär vilja slänga in en LinearSolution
 
             // initial evaluation of the truss to get forces
             truss.model.Solve_MPC();
@@ -80,6 +88,12 @@ namespace Krill.Grasshopper
 
                 // Find the rest of the areas of the elements where node size is controlled by the least area
                 truss.FindRestOfArea();
+
+                if (truss.areas.All(x => x <= 1e-6))
+                {
+                    truss.areas[0] = 1000;
+                    truss.FindRestOfArea();
+                }
                 // }
 
                 truss.ApplyAreas();     // to the FEM model

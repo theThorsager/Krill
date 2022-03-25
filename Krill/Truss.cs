@@ -122,14 +122,14 @@ namespace Krill
 
         public void SetAreasForTies(List<double> forces)
         {
-            const double fy = 300e6;    // This is a guess
+            const double fyd = 300e6;    // This is a guess
 
             for (int i = 0; i < model.Elements.Count; i++)
             {
                 if (forces[i] < 0)
                 {
                     // Is does feel like there is more to it than this, but then again maybe not
-                    areas[i] = forces[i] / fy;  
+                    areas[i] = forces[i] / fyd;  
                 }
                 else
                 {
@@ -164,8 +164,8 @@ namespace Krill
             boxSDF.ConstructSDF3();
 
             // old
-            for (int i = 0; i < model.Nodes.Count; ++i)
-                maxBox.Add(boxSDF.BiggestBox(ToRhino(model.Nodes[i].Location)));
+            //for (int i = 0; i < model.Nodes.Count; ++i)
+            //    maxBox.Add(boxSDF.BiggestBox(ToRhino(model.Nodes[i].Location)));
         }
 
         public List<AngleWarning> CheckAnglesConcentrated(List<double> forces, List<int> concentrated)
@@ -212,7 +212,7 @@ namespace Krill
                             J = j;
                         }
                     }
-                    if (J != -1 && (true || minAngle > Math.PI / 4))
+                    if (J != -1 && minAngle > Math.PI / 4)
                     {
                         warnings.Add(new AngleWarning()
                         {
@@ -285,7 +285,7 @@ namespace Krill
                     {
                         double angle = angles[k];
                         // check if any is less than 45
-                        if (angle < Math.PI / 4.0 || true)
+                        if (angle < Math.PI / 4.0)
                         {
                             double spanned = Math.PI;
                             // check if it is spanned by more than one tie
@@ -323,7 +323,7 @@ namespace Krill
                             }
                             
                             // Less than 30 is always pretty bad
-                            if (angle < Math.PI / 6 || spanned > 1e-3 || true)
+                            if (angle < Math.PI / 6 || spanned > 1e-3)
                             {
                                 warnings.Add(new AngleWarning()
                                 {
@@ -361,7 +361,7 @@ namespace Krill
                 // find an element with an known area
                 for (int i = 0; i < areas.Count; i++)
                 {
-                    if (areas[i] == 0)
+                    if (areas[i] <= 1e-6)
                         continue;
 
                     // check the nodes it connects to and update their areas
@@ -414,7 +414,7 @@ namespace Krill
 
 
 
-                if (areas.Zip(oldAreas, (x, y) => Math.Abs(x - y)).All(x => x <= 1e-3))
+                if (areas.Zip(oldAreas, (x, y) => Math.Abs(x - y) / x).All(x => x <= 1e-3))
                     break;
             }
             //    // break if no area changed more than the tolerance
@@ -587,14 +587,14 @@ namespace Krill
             for (int i = 0; i < indices.Count; i++)
             {
                 double area = areas[indices[i]];
-                if (area != 0)
+                if (area >= 1e-6)
                 {
                     constraints.Add(new Tuple<Vector3d, double>(normals[i], area));
                 }
             }
 
             // Steepest ascent algorithm
-            double norm = constraints.Min(x => x.Item2);
+            double norm = Math.Min(constraints.Min(x => x.Item2), bigBox.MaximumCoordinate * bigBox.MaximumCoordinate);
             double sqNorm = Math.Sqrt(norm);
             Point3d pt = new Point3d(sqNorm, sqNorm, sqNorm);
 
