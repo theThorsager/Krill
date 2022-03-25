@@ -289,7 +289,7 @@ namespace Krill.Grasshopper
                     // compute the acceleration
                     model.UpdateForce(Math.Min((double)(i + 1.0) / n_load_stepping, 1));
                     // Verlet integration, to update pos
-                    double c = model.CalculateDampening2();
+                    double c = model.CalculateDampening();
                     model.UpdateDisp(c);
 
                     if (CancellationToken.IsCancellationRequested)
@@ -318,7 +318,7 @@ namespace Krill.Grasshopper
                     // compute the acceleration
                     model.UpdateForce();
                     // Verlet integration, to update pos
-                    double c = model.CalculateDampening2();
+                    double c = model.CalculateDampening();
                     model.UpdateDisp(c);
 
                     double residual = model.ComputeResidual(F);
