@@ -280,9 +280,9 @@ namespace Krill
         private Vector2d CorrectPrincpDir(int indVoxel, Vector2d prevDir)
         {
             Vector3d[] pDir = new Vector3d[6];
-            double[] angle = new double[6];
-            double minAng = double.MaxValue;
-            int minInd = -1;
+            double[] cos = new double[6];
+            double maxCos = double.MinValue;
+            int maxInd = -1;
             Vector2d direction;
 
             Vector3d prevDir3d = new Vector3d(prevDir.X, prevDir.Y, 0);
@@ -299,20 +299,20 @@ namespace Krill
                 pDir[k] = princpDir.cellValues[indVoxel][k];
                 pDir[k + 3] = -pDir[k];
 
-                angle[k] = Vector3d.VectorAngle(prevDir3d, pDir[k]);
-                angle[k + 3] = Vector3d.VectorAngle(prevDir3d, pDir[k + 3]);
+                cos[k] = (prevDir3d * pDir[k]);
+                cos[k + 3] = -cos[k];
             }
 
             for (int k = 0; k < 6; k++)
             {
-                if (angle[k] < minAng)
+                if (cos[k] > maxCos)
                 {
-                    minAng = angle[k];
-                    minInd = k;
+                    maxCos = cos[k];
+                    maxInd = k;
                 }
             }
 
-            direction = new Vector2d(pDir[minInd].X, pDir[minInd].Y);
+            direction = new Vector2d(pDir[maxInd].X, pDir[maxInd].Y);
 
             return direction;
         }
