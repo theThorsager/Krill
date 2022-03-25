@@ -180,6 +180,8 @@ namespace Krill
 
             oldcuttoff = newcuttoff;
 
+            int count = 0;
+
             for (int a = 0; a < nBonds; a++)
             {
                 int jp = i + nlist[a];
@@ -194,6 +196,9 @@ namespace Krill
 
                 if (m)
                     CalcBondForce(i, jm, surfCorr, a);
+
+                count += p ? 1 : 0;
+                count += m ? 1 : 0;
             }
 
             forceVoxels.cellValues[i] += bodyload.cellValues[i] * factor / vol;
@@ -205,7 +210,7 @@ namespace Krill
                 Math.Sqrt(Math.Abs(factor * bodyload.cellValues[i].Y + spring.cellValues[i].Y * dispVoxels.cellValues[i].Y)) +
                 Math.Sqrt(Math.Abs(factor * bodyload.cellValues[i].Z + spring.cellValues[i].Z * dispVoxels.cellValues[i].Z));
 
-            utilization.cellValues[i] = Math.Sqrt(utilization.cellValues[i]);
+            utilization.cellValues[i] = Math.Sqrt(Math.Sqrt(utilization.cellValues[i] / count));
         }
 
         public double CalculateDampening()
@@ -307,7 +312,7 @@ namespace Krill
                                                                                          bondStiffness = bond_stiffness,
                                                                                          springs = this.spring } );
 
-            vonMises.UpdateStrains(dispVoxels);
+            vonMises.UpdateFakeStrains(dispVoxels);
             vonMises.UpdateStresses();
             vonMises.UpdateVonMises();
 
@@ -320,6 +325,26 @@ namespace Krill
                     startVoxels.cellValues[i] = 0;
             }
 
+        }
+
+        public bool RemoveUnderUtilizedVoxels(double factor)
+        {
+            bool bol = false;
+            double maxUti = utilization.cellValues.Max();
+            double cutoff = maxUti * factor;
+
+            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                if (utilization.cellValues[i] < cutoff)
+                {
+                    startVoxels.cellValues[i] = 0;
+                    bol = true;
+                }                    
+            }
+            return bol;
         }
 
         public double TotalDisplacement()
@@ -535,14 +560,7 @@ namespace Krill
         public double ComputeResidual(double F)
         {
             // residual of our equations
-            double R = forceVoxels.cellValues.Sum(x =>
-            {
-                double res = x.X > 0 ? x.X : -x.X;
-                res += x.Y > 0 ? x.Y : -x.Y;
-                res += x.Z > 0 ? x.Z : -x.Z;
-                return res;
-            }
-            );
+            double R = 0;
 
             // number of relevant points
             int n = 0;
@@ -554,6 +572,11 @@ namespace Krill
                 if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
 
+                Vector3d x = forceVoxels.cellValues[i];
+                double res = x.X > 0 ? x.X : -x.X;
+                res += x.Y > 0 ? x.Y : -x.Y;
+                res += x.Z > 0 ? x.Z : -x.Z;
+                R += res;
                 ++n;
             }
             //F *= bond_stiffness / n;
