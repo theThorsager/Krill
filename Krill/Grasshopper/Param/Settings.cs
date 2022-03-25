@@ -75,6 +75,7 @@ namespace Krill.Grasshopper.Param
                 Delta = Delta, 
                 delta = delta, 
                 bond_stiffness = c, 
+                bond_stiffness2d = Analytical2d(E, d),
                 n_timesteps = n_t, 
                 E = E
             }));

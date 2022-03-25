@@ -8,6 +8,38 @@ using Krill.Containers;
 
 namespace Krill
 {
+    internal class BBperi2dState
+    {
+        public Voxels2d<Vector2d> forceVoxels;
+        public Voxels2d<Vector2d> dispVoxels;
+        public Voxels2d<Vector2d> velVoxels;
+
+        public bool relaxTension = false;
+        public double oldcuttoff = 0;
+
+        public int i = -1;
+
+        //public object handle = new object();
+        public BBperi2dState(BBperi2d bperi)
+        {
+            forceVoxels = bperi.forceVoxels;
+            dispVoxels = bperi.dispVoxels;
+            velVoxels = bperi.velVoxels;
+        }
+
+        public void LastUpdate(Voxels2d<int> mask, int[] nlist, BBperi2d bperi, int i)
+        {
+            Voxels2d<int>.SoftenNearMask(mask, bperi.forceVoxels, nlist);
+            Voxels2d<int>.SoftenNearMask(mask, bperi.dispVoxels, nlist);
+            Voxels2d<int>.SoftenNearMask(mask, bperi.velVoxels, nlist);
+
+            relaxTension = bperi.relaxTension;
+            oldcuttoff = bperi.oldcuttoff;
+
+            this.i = i;
+        }
+    }
+
     internal class BBperi2d
     {
         const int maskbit = 0x000000FF;
@@ -83,7 +115,18 @@ namespace Krill
 
             PreComputeXi();
         }
+        public void ApplyState(BBperi2dState bbState)
+        {
+            if (bbState == null)
+                return;
 
+            Voxels2d<int>.LERPFrom(forceVoxels, bbState.forceVoxels);
+            Voxels2d<int>.LERPFrom(dispVoxels, bbState.dispVoxels);
+            Voxels2d<int>.LERPFrom(velVoxels, bbState.velVoxels);
+
+            relaxTension = bbState.relaxTension;
+            oldcuttoff = bbState.oldcuttoff;
+        }
         public void PreComputeXi()
         {
             nlist_xi = new Vector2d[nlist.Length];

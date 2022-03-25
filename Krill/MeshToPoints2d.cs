@@ -36,6 +36,11 @@ namespace Krill
             voxels = new Voxels2d<int>(origin, Delta, n);
         }
 
+        public MeshToPoints2d(Voxels2d<int> mask)
+        {
+            voxels = mask;
+        }
+
         public void FillBoundaryValues(int newvalue = 1)
         {
 
