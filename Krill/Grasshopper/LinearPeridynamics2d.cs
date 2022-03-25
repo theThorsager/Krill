@@ -8,6 +8,8 @@ using Rhino.Geometry;
 using Krill.Containers;
 using System.Linq;
 
+using System.Windows.Forms;
+
 namespace Krill.Grasshopper
 {
     public class LinearPeridynamics2d : GH_AsyncComponent
@@ -20,14 +22,63 @@ namespace Krill.Grasshopper
               "Description",
               "Krill", "Solvers")
         {
-            BaseWorker = new LinearPeridynamics2dWorker(null, this);
+            BaseWorker = new LinearPeridynamics2dWorker(new Voxel2dConduit(), this);
         }
+
+        public override bool IsPreviewCapable => true;
 
         public override void RemovedFromDocument(GH_Document document)
         {
             this.RequestCancellation();
             BaseWorker.SetData(null);   // Dirty way to disable the conduit
             base.RemovedFromDocument(document);
+        }
+
+        public override void AppendAdditionalMenuItems(ToolStripDropDown menu)
+        {
+            base.AppendAdditionalMenuItems(menu);
+            Menu_AppendItem(menu, "Cancel", (s, e) =>
+            {
+                RequestCancellation();
+            });
+        }
+
+        public override void DisplayProgress(object sender, System.Timers.ElapsedEventArgs e)
+        {
+            if (Workers.Count == 0 || ProgressReports.Values.Count == 0)
+            {
+                return;
+            }
+
+            double min = double.MaxValue;
+            foreach (var kvp in ProgressReports)
+            {
+                min = kvp.Value < min ? kvp.Value : min;
+            }
+            int i = (int)min;
+            min -= i;
+            switch (i)
+            {
+                case 0:
+                    Message = min.ToString("0.00%");
+                    break;
+                case 1:
+                    Message = "Applying BCs";
+                    break;
+                case 2:
+                    Message = "Load stepping: " + min.ToString("0.00%");
+                    break;
+                case 3:
+                    Message = "Converging: " + min.ToString("0.00%");
+                    break;
+                default:
+                    break;
+            }
+
+            Rhino.RhinoApp.InvokeOnUiThread((Action)delegate
+            {
+                OnDisplayExpired(true);
+            });
         }
 
         public override bool Locked
@@ -127,18 +178,17 @@ namespace Krill.Grasshopper
         Param.LinearSolution2dGoo solution { get; set; } = null;
         public LinearPeridynamics2dWorker(Voxel2dConduit vcon, GH_Component parent) : base(null)
         {
-            if (vcon is null)
-                conduit = new Voxel2dConduit();
-            else
+            if (!(vcon is null))
+            {
                 conduit = vcon;
-
-            conduit.Enabled = true;
+                conduit.Enabled = true;
+            }
             Parent = parent;
         }
 
         public override void DoWork(Action<string, double> ReportProgress, Action Done)
         {
-            ReportProgress(Id, 0);
+            ReportProgress(Id, 1);
 
             double tolerance = 1e-6;
             double logtol = Math.Log(tolerance);
@@ -209,6 +259,7 @@ namespace Krill.Grasshopper
             double F = model.ComputeF(BCs, settings.E);
 
             // Load Stepping
+            ReportProgress(Id, 2);
             const int n_load_stepping = 50;
             int i = 0;
             for (; i < n_load_stepping; i++)
@@ -226,10 +277,11 @@ namespace Krill.Grasshopper
                     conduit.SetDisplacments(model.dispVoxels);
                     conduit.Update();
                 }
-                ReportProgress(Id, (double)i / n_load_stepping);
+                ReportProgress(Id, 2.0 + (double)i / n_load_stepping);
             }
 
             double residual_scale = 1;
+            ReportProgress(Id, 3);
             // Try to converge
             for (; i < settings.n_timesteps; i++)
             {
@@ -249,10 +301,10 @@ namespace Krill.Grasshopper
                     if (i == n_load_stepping)
                     {
                         residual_scale = Math.Log(residual);
-                        ReportProgress(Id, 0);
+                        ReportProgress(Id, 3);
                     }
                     else
-                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / (logtol - residual_scale));
+                        ReportProgress(Id, 3.0 + Math.Max(0, (Math.Log(residual) - residual_scale) / (logtol - residual_scale)));
                 }
                 // Check termination criteria
                 if (residual < tolerance)
