@@ -162,7 +162,7 @@ namespace Krill.Grasshopper
 
             // Construct the BBperi model to allocate data
             BBperi2d model = new BBperi2d(mask, settings.bond_stiffness, neighOff,
-                settings.Delta * settings.Delta * settings.Delta,
+                settings.Delta * settings.Delta,
                 settings.delta);
             //model.kernel = Utility.getKernelWeights(mask.n, settings.delta, neighOff);
 
@@ -204,7 +204,7 @@ namespace Krill.Grasshopper
             conduit.SetDisplacments(model.dispVoxels);
             conduit.Update();
 
-            model.SetDensities(settings.delta * settings.Delta, 10);
+            model.SetDensities(settings.delta * settings.Delta, 4);
 
             double F = model.ComputeF(BCs, settings.E);
 

@@ -93,7 +93,7 @@ namespace Krill
         {
             nlist_xi = new Vector3d[nlist.Length];
             nlist_xi_length = new double[nlist.Length];
-            int i = noVoxels * noVoxels * noVoxels / 2;
+            int i = startVoxels.ToLinearIndex(startVoxels.n / 2, startVoxels.n / 2, startVoxels.n / 2);
             for (int aa = 0; aa < nlist.Length; aa++)
             {
                 int j = i + nlist[aa];
@@ -151,7 +151,7 @@ namespace Krill
                     CalcBondForce(i, jm, surfCorr, a);
             }
 
-            forceVoxels.cellValues[i] += bodyload.cellValues[i] * factor;
+            forceVoxels.cellValues[i] += bodyload.cellValues[i] * factor / vol;
             forceVoxels.cellValues[i].X += spring.cellValues[i].X * dispVoxels.cellValues[i].X;
             forceVoxels.cellValues[i].Y += spring.cellValues[i].Y * dispVoxels.cellValues[i].Y;
             forceVoxels.cellValues[i].Z += spring.cellValues[i].Z * dispVoxels.cellValues[i].Z;
@@ -247,7 +247,7 @@ namespace Krill
             int vols = startVoxels.cellValues[i] >> 20;
             vols += startVoxels.cellValues[j] >> 20;
             double factor = (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
-            xi_vec *= bond_stiffness * vol / (l*l*l);
+            xi_vec *= factor * bond_stiffness * vol / (l*l*l);
 
             densities.cellValues[i] += xi_vec;
         }
@@ -414,7 +414,7 @@ namespace Krill
             double y = xi_eta_vec.Length;
             double s = (y - xi) / xi;      // Engineering strain
 
-            double f = s * bond_stiffness * vol;
+            double f = factor * s * bond_stiffness * vol;
 
             // Make the stress strain curve stranger
             const double low = 0.05;
@@ -563,6 +563,7 @@ namespace Krill
                 }
             }
 
+            return absoluteForce;
             return absoluteForce - totalVec.Length;
         }
 
@@ -649,6 +650,8 @@ namespace Krill
 
             Vector3d disp = bc.normal ? normal * bc.displacement.Z : bc.displacement;
 
+            double factor = (double)(nlist.Length * 2.0 + 1.0) / (double)(sum + localsum);
+            resSpringConstant *= factor;
             spring.cellValues[i] += resSpringConstant;
             // Calculate a bodyload based on enforced displacment and the spring constant
             resBodyLoad.X = -disp.X * resSpringConstant.X;
@@ -674,9 +677,7 @@ namespace Krill
             xi_vec.X *= xi_vec.X;
             xi_vec.Y *= xi_vec.Y;
             xi_vec.Z *= xi_vec.Z;
-            int vols = startVoxels.cellValues[i] >> 20;
-            vols += startVoxels.cellValues[j] >> 20;
-            double factor = (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
+            
 
             xi_vec *= bond_stiffness * vol / (l * l * l);
 
@@ -706,6 +707,7 @@ namespace Krill
                                 ++sum;
                         }
 
+                        startVoxels.cellValues[I] &= ~(0xFFFFF << 20);
                         startVoxels.cellValues[I] |= sum << 20;
                     }
                 }

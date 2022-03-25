@@ -68,7 +68,7 @@ namespace Krill.Grasshopper.Param
             //double c = Analytical(K3d, d);
             //double c = StiffnessMod(K3d, Delta);
             double c = VolumeCorr(K3d, Delta, delta);
-            //c = Analytical2d(E, delta);
+            //c = Analytical2d(E, d);
 
             DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
             { 
@@ -87,7 +87,7 @@ namespace Krill.Grasshopper.Param
             Voxels<bool> dummy = new Voxels<bool>(Point3d.Origin, Delta, n);
             double c = 0;
             double volume = Delta * Delta * Delta;
-            int I = n / 2;
+            int I = dummy.ToLinearIndex(n / 2, n / 2, n / 2);
             for (int i = 0; i < off.Length; i++)
             {
                 double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;

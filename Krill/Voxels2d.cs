@@ -67,7 +67,8 @@ namespace Krill
         public static List<Point2d> GetPoints(Voxels2d<int> mask, Voxels2d<Vector2d> disp, double factor = 10, uint maskbit = 0xFFFFFFFF)
         {
             List<Point2d> result = new List<Point2d>();
-            for (int i = 0; i < mask.cellValues.Length; i++)
+            int n = Math.Min(disp.cellValues.Length, mask.cellValues.Length);
+            for (int i = 0; i < n; i++)
             {
                 if ((mask.cellValues[i] & maskbit) != 0)
                     result.Add(disp.IndexToPoint(i) + factor * disp.cellValues[i]);

@@ -53,7 +53,6 @@ namespace Krill
 
             List<int> result = new List<int>();
 
-
             for (int j = 0; j <= rfloor; j++)
             {
                 for (int i = 0; i <= rfloor; i++)

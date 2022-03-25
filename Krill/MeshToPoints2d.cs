@@ -79,7 +79,9 @@ namespace Krill
             //}
             //pts.Add(curve.PointAtEnd);
 
+            pts.Add(curve.PointAtStart);
             pts.AddRange(curve.DivideEquidistant(del));
+            pts.Add(curve.PointAtEnd);
             points.AddRange(pts);
 
             foreach (Point3d pt in pts)
@@ -118,7 +120,7 @@ namespace Krill
 
         public void SetBCN(Containers.IBoundaryCondition2d bc, int val)
         {
-            FillBoundaryValuesBC(bc.curve, val, this.voxels.delta * 4);
+            FillBoundaryValuesBC(bc.curve, val, 1.01);
         }
         
         public void RefineBoundaries()

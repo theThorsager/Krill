@@ -72,7 +72,7 @@ namespace Krill
             if (points is null)
                 points = mask.GetPointsNotAt(0);
              
-            e.Display.DrawPoints(points.Select(x => new Point3d(x.X, x.Y, 0)), PointStyle.RoundSimple, 2, Color.Black);
+            e.Display.DrawPoints(points.Where(x => x.IsValid).Select(x => new Point3d(x.X, x.Y, 0)), PointStyle.RoundSimple, 2, Color.Black);
         }
 
         public void Update()

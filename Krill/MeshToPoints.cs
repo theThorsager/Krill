@@ -202,7 +202,7 @@ namespace Krill
         {
             Mesh temp = mesh;
             mesh = bc.area;
-            FillBoundaryValuesBC(val, this.voxels.delta * 4);
+            FillBoundaryValuesBC(val, 1.01);
 
             mesh = temp;
         }

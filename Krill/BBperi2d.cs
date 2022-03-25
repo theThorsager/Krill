@@ -88,7 +88,7 @@ namespace Krill
         {
             nlist_xi = new Vector2d[nlist.Length];
             nlist_xi_length = new double[nlist.Length];
-            int i = noVoxels * noVoxels * noVoxels / 2;
+            int i = startVoxels.ToLinearIndex(startVoxels.n / 2, startVoxels.n / 2);
             for (int aa = 0; aa < nlist.Length; aa++)
             {
                 int j = i + nlist[aa];
@@ -143,7 +143,7 @@ namespace Krill
                     CalcBondForce(i, jm, surfCorr, a);
             }
 
-            forceVoxels.cellValues[i] += bodyload.cellValues[i] * factor;
+            forceVoxels.cellValues[i] += bodyload.cellValues[i] * factor / vol;
             forceVoxels.cellValues[i].X += spring.cellValues[i].X * dispVoxels.cellValues[i].X;
             forceVoxels.cellValues[i].Y += spring.cellValues[i].Y * dispVoxels.cellValues[i].Y;
             utilization.cellValues[i] +=
@@ -360,7 +360,7 @@ namespace Krill
 
             //factor *= (1.0 / stiffnessMod.cellValues[i] + 1.0 / stiffnessMod.cellValues[j]) * 0.5;
 
-            factor *= (weighting.cellValues[i] + weighting.cellValues[j]) * 0.5;
+            //factor *= (weighting.cellValues[i] + weighting.cellValues[j]) * 0.5;
 
             //Vector2d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
             Vector2d xi_vec = i < j ? nlist_xi[a] : -nlist_xi[a];
@@ -517,7 +517,7 @@ namespace Krill
                 }
             }
 
-            return absoluteForce - totalVec.Length;
+            return absoluteForce;
         }
 
         public void SetNuemann(BoundaryConditionNuemann2d bc, int tag)
@@ -603,8 +603,11 @@ namespace Krill
 
             Vector2d disp = bc.normal ? normal2d * bc.displacement.Y : new Vector2d(bc.displacement.X, bc.displacement.Y);
 
+            double factor = (double)(nlist.Length * 2.0 + 1.0) / (double)(sum + localsum);
+            //factor = 1;
+            resSpringConstant *= factor;
             spring.cellValues[i] += resSpringConstant;
-            // Calculate a bodyload based on enforced displacment and the spring constant
+            // Calculate a bodyload based on enforced displacement and the spring constant
             resBodyLoad.X = -disp.X * resSpringConstant.X;
             resBodyLoad.Y = -disp.Y * resSpringConstant.Y;
             bodyload.cellValues[i] += resBodyLoad;
@@ -616,9 +619,11 @@ namespace Krill
             Vector2d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
             Point2d point = startVoxels.IndexToPoint(i);
 
+            Line line = new Line(new Point3d(point.X, point.Y, 0),
+                                    new Vector3d(xi_vec.X, xi_vec.Y, 0));
+
             var intersection = Rhino.Geometry.Intersect.Intersection.
-                CurveLine(bc.curve, new Line(new Point3d(point.X, point.Y, 0), 
-                                    new Vector3d(xi_vec.X, xi_vec.Y, 0)), 1e-6, 1e-6);
+                CurveCurve(bc.curve, line.ToNurbsCurve(), 1e-6, 1e-6);
             double? ti = intersection.FirstOrDefault(x => x.ParameterB > 0)?.ParameterB;
             if (ti is null || ti <= 0)
                 return Vector2d.Zero;
@@ -626,18 +631,14 @@ namespace Krill
             double t = ti.Value;
 
             sum++;
-            xi_vec *= t;
+            xi_vec *= t / xi_vec.Length;
 
             double l = xi_vec.Length;
             stiffnessMod.cellValues[i] += l;
 
             xi_vec.X *= xi_vec.X;
             xi_vec.Y *= xi_vec.Y;
-            int vols = startVoxels.cellValues[i] >> 20;
-            vols += startVoxels.cellValues[j] >> 20;
-            double factor = (double)(nlist.Length * 4.0 + 2.0) / (double)vols;
-
-            xi_vec *= factor * bond_stiffness * vol / (l * l * l);
+            xi_vec *= bond_stiffness * vol / (l * l * l);
 
             return -xi_vec;
         }
