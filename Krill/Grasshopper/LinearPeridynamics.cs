@@ -371,6 +371,47 @@ namespace Krill.Grasshopper
                 //        break;
                 //}
 
+                //double ER = 0.02;
+
+                //for (double RR = 0.01; RR < 0.75; RR += ER)
+                //{
+                //    //model.RemoveUnstressedVoxels(RR, settings.E);
+
+                //    for (int j = 0; j < 50; j++)
+                //    {
+                //        if (!model.RemoveUnderUtilizedVoxels(RR))
+                //            break;                    
+
+                //        for (; i < settings.n_timesteps; i++)
+                //        {
+                //            // compute the acceleration
+                //            model.UpdateForce();
+                //            // Verlet integration, to update pos
+                //            double c = model.CalculateDampening();
+                //            model.UpdateDisp(c * 0.5);
+
+                //            double residual = model.ComputeResidual(F);
+                //            if (i % 10 == n_load_stepping % 10)
+                //            {
+                //                if (CancellationToken.IsCancellationRequested) return;
+
+                //                conduit.SetDisplacments(model.dispVoxels);
+                //                conduit.Update();
+                //                if (i == n_load_stepping)
+                //                {
+                //                    residual_scale = Math.Log(residual);
+                //                    ReportProgress(Id, 0);
+                //                }
+                //                else
+                //                    ReportProgress(Id, (Math.Log(residual) - residual_scale) / (logtol - residual_scale));
+                //            }
+                //            // Check termination criteria
+                //            if (residual < tolerance)
+                //                break;
+                //        }
+                //    }
+                //}
+
                 // Display data
                 conduit.SetDisplacments(model.dispVoxels);
                 conduit.Update();
