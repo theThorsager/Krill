@@ -68,7 +68,7 @@ namespace Krill.Grasshopper
 
                 meshToPoints.FillBoundaryValues();
 
-                meshToPoints.FillInternalValues2();
+                meshToPoints.FillInternalValues();
 
                 meshToPoints.RefineBoundaries();
 

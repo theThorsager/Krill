@@ -10,7 +10,6 @@ namespace Krill
     class MeshToPoints
     {
         Mesh mesh;
-        int index = 0;
 
         public Voxels<int> voxels;
 
@@ -225,12 +224,12 @@ namespace Krill
             }
         }
 
-        public void FillInternalValues2()
+        public void FillInternalValues()
         {
             // Find a cell with the right value
             // check if it is inside the mesh, else iterate until the we pass a border again
             // Uses a global index such that a new interior point is found each time the method is called, until all points are found
-            for (; index < voxels.cellValues.Length; index++)
+            for (int index = 0; index < voxels.cellValues.Length; index++)
             {
                 if (voxels.cellValues[index] != 0)
                     continue;
@@ -247,46 +246,6 @@ namespace Krill
 
             voxels.SetValues(voxels, 8, 0);
         }
-
-        public void FillInternalValues()
-        {
-            while (FindFirstInside(0, true, out Coord coord))
-            {
-                FloodFill(coord, 0, 2);
-            }
-        }
-
-        bool FindFirstInside(int val, bool inside, out Coord coord)
-        {
-            // Find a cell with the right value
-            // check if it is inside the mesh, else iterate until the we pass a border again
-            // Uses a global index such that a new interior point is found each time the method is called, until all points are found
-            for (; index < voxels.cellValues.Length; index++)
-            {
-                if (voxels.cellValues[index] != val)
-                    continue;
-
-                if (mesh.IsPointInside(voxels.IndexToPoint(index), 1e-3, true) != inside)
-                {
-                    index++;
-                    for (; index < voxels.cellValues.Length; index++)
-                    {
-                        if (voxels.cellValues[index] != val)
-                            break;
-                    }
-                }
-                else
-                {
-                    coord = voxels.IndexToCoord(index);
-                    index++;
-                    return true;
-                }
-            }
-
-            coord = new Coord();
-            return false;
-        }
-
 
         public void FloodFill(Coord first, int from, int to)
         {

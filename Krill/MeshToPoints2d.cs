@@ -10,7 +10,6 @@ namespace Krill
     class MeshToPoints2d
     {
         Brep mesh;
-        int index = 0;
 
         public Voxels2d<int> voxels;
 
@@ -150,43 +149,26 @@ namespace Krill
 
         public void FillInternalValues()
         {
-            while (FindFirstInside(0, true, out Coord coord))
-            {
-                FloodFill(coord, 0, 2);
-            }
-        }
-
-        bool FindFirstInside(int val, bool inside, out Coord coord)
-        {
             // Find a cell with the right value
             // check if it is inside the mesh, else iterate until the we pass a border again
             // Uses a global index such that a new interior point is found each time the method is called, until all points are found
-            for (; index < voxels.cellValues.Length; index++)
+            for (int index = 0; index < voxels.cellValues.Length; index++)
             {
-                if (voxels.cellValues[index] != val)
+                if (voxels.cellValues[index] != 0)
                     continue;
 
-                if (IsPointOn(voxels.IndexToPoint(index)) != inside)
+                if (IsPointOn(voxels.IndexToPoint(index)))
                 {
-                    index++;
-                    for (; index < voxels.cellValues.Length; index++)
-                    {
-                        if (voxels.cellValues[index] != val)
-                            break;
-                    }
+                    FloodFill(voxels.IndexToCoord(index), 0, 2);
                 }
                 else
                 {
-                    coord = voxels.IndexToCoord(index);
-                    index++;
-                    return true;
+                    FloodFill(voxels.IndexToCoord(index), 0, 8);
                 }
             }
 
-            coord = new Coord();
-            return false;
+            voxels.SetValues(voxels, 8, 0);
         }
-
 
         public void FloodFill(Coord first, int from, int to)
         {
