@@ -14,8 +14,7 @@ namespace Krill
         public Point2d startPt;
         public Vector2d startVec;
         public Voxels2d<Vector3d[]> princpDir;
-        public Voxels2d<Vector3d> princpStress;
-
+        public Voxels2d<Vector3d> princpStress; 
         public Polyline loadPath;
 
         private double d;
@@ -59,7 +58,7 @@ namespace Krill
 
                 Vector2d oldAveDf;
 
-                int oldSign = Math.Sign(LerpPstress(x0, dfx0));
+                // int oldSign = Math.Sign(LerpPstress(x0, dfx0));
 
                 for (int j = 0; j < 10; j++)
                 {
@@ -79,10 +78,10 @@ namespace Krill
 
                 x1 = x0 + step * moveVec;
 
-                int newSign = Math.Sign(LerpPstress(x1, moveVec));
+                // int newSign = Math.Sign(LerpPstress(x1, moveVec));
 
-                if (Math.Abs(oldSign - newSign) == 2)
-                    break;
+                //if (Math.Abs(oldSign - newSign) == 2)
+                //    break;
 
                 if (endCond)
                     break;
@@ -197,7 +196,72 @@ namespace Krill
             // Väldigt basic break-villkor, uppdatera och implementera ett bättre
             if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0 &&
                 (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0)
+            {
                 basicEnd = true;
+                return Vector2d.Zero;
+            }
+
+
+            List<int> INDs = new List<int>();
+
+            INDs.Add(INDi0j0k0);
+            INDs.Add(INDi1j0k0);
+            INDs.Add(INDi0j1k0);
+            INDs.Add(INDi1j1k0);
+
+            bool[] inside = new bool[4];
+            for (int i = 0; i < 4; i++)
+            {
+                if ((startVoxels.cellValues[INDs[i]] & maskbit) == 0)
+                    inside[i] = false;
+                else
+                    inside[i] = true;
+            }
+
+            List<int> offsets = new List<int>();
+            offsets.Add(startVoxels.ToLinearIndex(-1, 0));
+            offsets.Add(startVoxels.ToLinearIndex(0, -1));
+            offsets.Add(startVoxels.ToLinearIndex(0, 1));
+            offsets.Add(startVoxels.ToLinearIndex(1, 0));
+
+            offsets.Add(startVoxels.ToLinearIndex(-1, -1));
+            offsets.Add(startVoxels.ToLinearIndex(-1, 1));
+            offsets.Add(startVoxels.ToLinearIndex(1, -1));
+            offsets.Add(startVoxels.ToLinearIndex(1, 1));
+
+            if (!inside[0] || !inside[1] || !inside[2] || !inside[3])
+            {
+                for (int i = 0; i < offsets.Count; i++)
+                {
+                    int[] newINDs = new int[4];
+                    for (int ii = 0; ii < 4; ii++)
+                    {
+                        newINDs[ii] = INDs[ii] + offsets[i];
+                        if ((startVoxels.cellValues[newINDs[ii]] & maskbit) == 0)
+                            inside[ii] = false;
+                        else
+                            inside[ii] = true;
+                    }
+
+                    if (inside[0] && inside[1] && inside[2] && inside[3])
+                    {
+                        INDi0j0k0 = newINDs[0];
+                        INDi1j0k0 = newINDs[1];
+                        INDi0j1k0 = newINDs[2];
+                        INDi1j1k0 = newINDs[3];
+
+                        Coord i0j0 = startVoxels.IndexToCoord(INDi0j0k0);
+
+                        i0 = i0j0.X;
+                        j0 = i0j0.Y;
+
+                        a = ((u - 0.5) - i0) * 2;
+                        b = ((v - 0.5) - j0) * 2;
+
+                        break;
+                    }
+                }
+            }
 
             dir.X = (1 - a) * (1 - b) * CorrectPrincpDir(INDi0j0k0, previousDir).X
                     + a * (1 - b) * CorrectPrincpDir(INDi1j0k0, previousDir).X

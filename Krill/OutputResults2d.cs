@@ -585,6 +585,47 @@ namespace Krill
             }
 
         }
+
+        public void UpdatePrincipalStressesPQ()
+        {
+            for (int i = 0; i < noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                double sx = stressXX.cellValues[i];
+                double sy = stressYY.cellValues[i];
+                double txy = stressXY.cellValues[i];
+
+                Vector3d eigenVals = new Vector3d();
+
+                double temp = (sx - sy) * 0.5;
+
+                eigenVals.X = (sx + sy) * 0.5 + Math.Sqrt(temp * temp + txy * txy);
+                eigenVals.Y = (sx + sy) * 0.5 - Math.Sqrt(temp * temp + txy * txy);
+
+                princpStress.cellValues[i] = eigenVals;
+
+                double theta = 0.5 * Math.Atan((2 * txy) / (sx - sy));
+
+                Vector3d dir1 = Vector3d.XAxis;
+
+                dir1.Rotate(theta, Vector3d.ZAxis);
+
+                Vector3d dir2 = Vector3d.YAxis;
+
+                dir2.Rotate(theta, Vector3d.ZAxis);
+
+                Vector3d[] vecList = new Vector3d[3];
+
+                vecList[0] = dir1;
+                vecList[1] = dir2;
+
+                princpDir.cellValues[i] = vecList;
+
+            }
+
+        }
         public void CalcCurlOfStressField()
         {
             for (int ind = 0; ind < noVoxels; ind++)
