@@ -244,9 +244,9 @@ namespace Krill
         private Vector3d CorrectPrincpDir(int indVoxel, Vector3d prevDir)
         {
             Vector3d[] pDir = new Vector3d[6];
-            double[] angle = new double[6];
-            double minAng = double.MaxValue;
-            int minInd = 0;
+            double[] cos = new double[6];
+            double maxCos = double.MinValue;
+            int maxInd = -1;
             Vector3d direction;
 
             // Kolla närmare på vad som händer längst med en kant
@@ -263,20 +263,20 @@ namespace Krill
                 pDir[k] = princpDir.cellValues[indVoxel][k];
                 pDir[k + 3] = -pDir[k];
 
-                angle[k] = Vector3d.VectorAngle(prevDir, pDir[k]);
-                angle[k + 3] = Vector3d.VectorAngle(prevDir, pDir[k + 3]);
+                cos[k] = prevDir * pDir[k];
+                cos[k + 3] = -cos[k];
             }
 
             for (int k = 0; k < 6; k++)
             {
-                if (angle[k] < minAng)
+                if (cos[k] > maxCos)
                 {
-                    minAng = angle[k];
-                    minInd = k;
+                    maxCos = cos[k];
+                    maxInd = k;
                 }
             }
 
-            direction = pDir[minInd];
+            direction = pDir[maxInd];
             return direction;
         }
 

@@ -122,14 +122,17 @@ namespace Krill.Grasshopper
 
             for (int i = 0; i < startPoints.Count; i++)
             {
+                ReportProgress(Id, (double)i / startPoints.Count);
+
                 if (CancellationToken.IsCancellationRequested)
                     return;
+
                 LoadPathCurve lPath = new LoadPathCurve(startVoxels, startPoints[i], startVectors[i], princpDirections, outputR.princpStress);
 
                 lPath.ConstructLoadPath(scaleDelta);
-
                 pLine.Add(lPath.loadPath);
             }
+            ReportProgress(Id, 1);
 
             if (CancellationToken.IsCancellationRequested)
                 return;
