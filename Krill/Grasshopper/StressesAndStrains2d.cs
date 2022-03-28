@@ -71,9 +71,9 @@ namespace Krill.Grasshopper
 
             // Do work
             OutputResults2d outputR = new OutputResults2d(linearSolution);
-            //outputR.UpdateFakeStrains(linearSolution.displacments);
-            //outputR.UpdateStresses();
-            outputR.UpdateFakeStress2(linearSolution.displacments);
+            outputR.UpdateFakeStrains(linearSolution.displacments);
+            outputR.UpdateStresses();
+            //outputR.UpdateFakeStress2(linearSolution.displacments);
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
             //outputR.UpdateDsDx(linearSolution.displacments);

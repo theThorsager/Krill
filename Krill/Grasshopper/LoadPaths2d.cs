@@ -18,7 +18,7 @@ namespace Krill.Grasshopper
         public LoadPaths2d()
           : base("LoadPaths2d", "LoadP2d",
               "Description",
-              "Krill", "Solvers")
+              "Krill", "Utility")
         {
             BaseWorker = new LoadPathsWorker2d();
         }
@@ -113,13 +113,6 @@ namespace Krill.Grasshopper
             pLine = new List<Polyline>();
             normals = new List<Vector3d>();
             allPts = new List<Point3d>();
-
-            //OutputResults2d outputR = new OutputResults2d(post);
-            ////outputR.UpdateFakeStrains(linearSolution.displacments);
-            ////outputR.UpdateStresses();
-            //outputR.UpdateFakeStress2(post.displacments);
-            //outputR.UpdateVonMises();
-            //outputR.UpdatePrincipalStresses();
 
             Voxels2d<int> startVoxels = post.mask;
             Voxels2d<Vector3d[]> princpDirections = post.princpDir;
