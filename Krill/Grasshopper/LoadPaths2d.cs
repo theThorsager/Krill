@@ -6,6 +6,7 @@ using GrasshopperAsyncComponent;
 using Rhino.Geometry;
 
 using Krill.Containers;
+using System.Linq;
 
 namespace Krill.Grasshopper
 {
@@ -43,7 +44,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddParameter(new Param.LinearSolutionParam2d());
+            pManager.AddParameter(new Param.PostProcessingResultsParam2d());
             pManager.AddPointParameter("StartPoints", "pts", "", GH_ParamAccess.list);
             pManager.AddVectorParameter("StartVectors", "vecs", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("ScaleFactorForDelta", "sf", "", GH_ParamAccess.item);
@@ -55,6 +56,8 @@ namespace Krill.Grasshopper
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddCurveParameter("curve", "c", "", GH_ParamAccess.list);
+            pManager.AddVectorParameter("normals", "Nvec", "", GH_ParamAccess.list);
+            pManager.AddPointParameter("pts", "pts", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -89,33 +92,38 @@ namespace Krill.Grasshopper
 
     class LoadPathsWorker2d : WorkerInstance
     {
-        Containers.LinearSolution2d linearSolution = null;
+        PostProcessingResults2d post = null;
         List<Polyline> pLine { get; set; } = null;
         List<Point3d> startPoints { get; set; }
         List<Vector3d> startVectors { get; set; }
         double scaleDelta { get; set; }
+        List<Vector3d> normals { get; set; }
+        List<Point3d> allPts { get; set; }
         public LoadPathsWorker2d() : base(null)
         { }
 
         public override void DoWork(Action<string, double> ReportProgress, Action Done)
         {
             if (CancellationToken.IsCancellationRequested) return;
-            if (linearSolution is null)
+            if (post is null)
                 return;
             // ...
+            //const int maskbit = 0x000000FF;
             ReportProgress(Id, 0);
             pLine = new List<Polyline>();
+            normals = new List<Vector3d>();
+            allPts = new List<Point3d>();
 
-            OutputResults2d outputR = new OutputResults2d(linearSolution);
-            //outputR.UpdateFakeStrains(linearSolution.displacments);
-            //outputR.UpdateStresses();
-            outputR.UpdateFakeStress2(linearSolution.displacments);
-            outputR.UpdateVonMises();
-            outputR.UpdatePrincipalStresses();
+            //OutputResults2d outputR = new OutputResults2d(post);
+            ////outputR.UpdateFakeStrains(linearSolution.displacments);
+            ////outputR.UpdateStresses();
+            //outputR.UpdateFakeStress2(post.displacments);
+            //outputR.UpdateVonMises();
+            //outputR.UpdatePrincipalStresses();
 
-            Voxels2d<int> startVoxels = linearSolution.mask;
-            Voxels2d<Vector3d[]> princpDirections = outputR.princpDir;
-            Voxels2d<Vector3d> princpStress = outputR.princpStress;
+            Voxels2d<int> startVoxels = post.mask;
+            Voxels2d<Vector3d[]> princpDirections = post.princpDir;
+            Voxels2d<Vector3d> princpStress = post.princpStress;
            
             int n = startVoxels.n;
 
@@ -131,7 +139,18 @@ namespace Krill.Grasshopper
                 lPath.ConstructLoadPath(scaleDelta);
 
                 pLine.Add(lPath.loadPath);
+
+                normals = lPath.normals.cellValues.ToList();
+
+                for (int j = 0; j < startVoxels.n*startVoxels.n; j++)
+                {
+                    Point2d pt = startVoxels.IndexToPoint(j);
+                    Point3d pt3d = new Point3d(pt.X, pt.Y, 0);
+                    allPts.Add(pt3d);
+                }
             }
+
+            
 
             if (CancellationToken.IsCancellationRequested)
                 return;
@@ -143,11 +162,11 @@ namespace Krill.Grasshopper
 
         public override void GetData(IGH_DataAccess DA, GH_ComponentParamServer Params)
         {
-            Param.LinearSolution2dGoo res = null;
+            Param.PostProcessingResults2dGoo res = null;
             DA.GetData(0, ref res);
             if (res is null)
                 return;
-            linearSolution = res.Value;
+            post = res.Value;
 
             List<Point3d> startPts = new List<Point3d>();
             DA.GetDataList(1, startPts);
@@ -169,6 +188,10 @@ namespace Krill.Grasshopper
 
             if (!(pLine is null))
                 DA.SetDataList(0, pLine);
+            if (!(normals is null))
+                DA.SetDataList(1, normals);
+            if (!(allPts is null))
+                DA.SetDataList(2, allPts);
         }
     }
 }

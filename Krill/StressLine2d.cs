@@ -14,12 +14,12 @@ namespace Krill
         private Voxels2d<int> startVoxels;
         private Voxels2d<Matrix> stressTensor;
 
-        public StressLine2d(Containers.LinearSolution2d linSol)
+        public StressLine2d(Containers.PostProcessingResults2d post)
         {
-            startVoxels = linSol.mask;
-            OutputResults2d results = new OutputResults2d(linSol);
-            results.UpdateFakeStrains(linSol.displacments);
-            results.UpdateStresses();
+            startVoxels = post.mask;
+            //OutputResults2d results = new OutputResults2d(post);
+            //results.UpdateFakeStrains(post.displacments);
+            //results.UpdateStresses();
 
             int noVoxels = startVoxels.n * startVoxels.n;
 
@@ -31,11 +31,11 @@ namespace Krill
                     continue;
 
                 Matrix tensor = new Matrix(2, 2);
-                tensor[0, 0] = results.stressXX.cellValues[i];
-                tensor[0, 1] = results.stressXY.cellValues[i];
+                tensor[0, 0] = post.stressXX.cellValues[i];
+                tensor[0, 1] = post.stressXY.cellValues[i];
 
-                tensor[1, 0] = results.stressXY.cellValues[i];
-                tensor[1, 1] = results.stressYY.cellValues[i];
+                tensor[1, 0] = post.stressXY.cellValues[i];
+                tensor[1, 1] = post.stressYY.cellValues[i];
 
                 stressTensor.cellValues[i] = tensor;
             }

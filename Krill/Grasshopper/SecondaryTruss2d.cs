@@ -25,7 +25,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddParameter(new Param.LinearSolutionParam2d());
+            pManager.AddParameter(new Param.PostProcessingResultsParam2d());
             pManager.AddCurveParameter("ExistingTruss", "pLine", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("ScaleFactorForDelta", "sf", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("Tolerance", "tol", "", GH_ParamAccess.item);
@@ -46,12 +46,12 @@ namespace Krill.Grasshopper
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            Containers.LinearSolution2d linearSolution = null;
-            Param.LinearSolution2dGoo res = null;
+            Containers.PostProcessingResults2d post = null;
+            Param.PostProcessingResults2dGoo res = null;
             DA.GetData(0, ref res);
             if (res is null)
                 return;
-            linearSolution = res.Value;
+            post = res.Value;
 
             List<Curve> curves = new List<Curve>();
             DA.GetDataList(1, curves);
@@ -75,10 +75,10 @@ namespace Krill.Grasshopper
             List<Line> secTruss = new List<Line>();
             List<Polyline> princpCrv = new List<Polyline>();
 
-            OutputResults2d results = new OutputResults2d(linearSolution);
-            results.UpdateFakeStrains(linearSolution.displacments);
-            results.UpdateStresses();
-            results.UpdatePrincipalStresses();
+            //OutputResults2d results = new OutputResults2d(post);
+            //results.UpdateFakeStrains(post.displacments);
+            //results.UpdateStresses();
+            //results.UpdatePrincipalStresses();
 
             List<Point3d> nds = new List<Point3d>();
 
@@ -104,7 +104,7 @@ namespace Krill.Grasshopper
 
                     for (int j = 0; j < 2; j++)
                     {
-                        LoadPathCurve2d lPath = new LoadPathCurve2d(linearSolution.mask, truss[i], vecs[j], results.princpDir, results.princpStress);
+                        LoadPathCurve2d lPath = new LoadPathCurve2d(post.mask, truss[i], vecs[j], post.princpDir, post.princpStress);
 
                         if (lPath.SecondaryLoadPath(scaleStep, tol, nds, out int ind))
                         {

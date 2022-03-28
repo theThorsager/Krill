@@ -23,7 +23,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddParameter(new Param.LinearSolutionParam2d());
+            pManager.AddParameter(new Param.PostProcessingResultsParam2d());
             pManager.AddLineParameter("Line", "L", "", GH_ParamAccess.item);
         }
 
@@ -41,17 +41,17 @@ namespace Krill.Grasshopper
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            Containers.LinearSolution2d linearSolution = null;
-            Param.LinearSolution2dGoo res = null;
+            Containers.PostProcessingResults2d post = null;
+            Param.PostProcessingResults2dGoo res = null;
             DA.GetData(0, ref res);
             if (res is null)
                 return;
-            linearSolution = res.Value;
+            post = res.Value;
 
             Line line = new Line();
             DA.GetData(1, ref line);
 
-            StressLine2d stressLine = new StressLine2d(linearSolution);
+            StressLine2d stressLine = new StressLine2d(post);
 
             List<double> stresses = stressLine.LERPstressAlongLine(line);
 

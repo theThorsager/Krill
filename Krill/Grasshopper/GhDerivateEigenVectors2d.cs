@@ -23,7 +23,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddParameter(new Param.LinearSolutionParam2d());
+            pManager.AddParameter(new Param.PostProcessingResultsParam2d());
         }
 
         /// <summary>
@@ -43,19 +43,19 @@ namespace Krill.Grasshopper
         protected override void SolveInstance(IGH_DataAccess DA)
         {
             // Get Data
-            Containers.LinearSolution2d linearSolution = null;
-            Param.LinearSolution2dGoo res = null;
+            Containers.PostProcessingResults2d post = null;
+            Param.PostProcessingResults2dGoo res = null;
             DA.GetData(0, ref res);
             if (res is null)
                 return;
-            linearSolution = res.Value;
+            post = res.Value;
 
-            OutputResults2d result = new OutputResults2d(linearSolution);
-            result.UpdateFakeStrains(linearSolution.displacments);
-            result.UpdateStresses();
-            result.UpdatePrincipalStresses();
+            //OutputResults2d result = new OutputResults2d(post);
+            //result.UpdateFakeStrains(post.displacments);
+            //result.UpdateStresses();
+            //result.UpdatePrincipalStresses();
 
-            DerivateEigenVectors2d dEigenVecs = new DerivateEigenVectors2d(linearSolution.mask, result.stressTensor, result.princpStress, result.princpDir);
+            DerivateEigenVectors2d dEigenVecs = new DerivateEigenVectors2d(post.mask, post.stressTensor, post.princpStress, post.princpDir);
 
             List<Point3d> orgPoints = new List<Point3d>();
             List<Vector3d> dP1 = new List<Vector3d>();
@@ -63,12 +63,12 @@ namespace Krill.Grasshopper
 
             const int maskbit = 0x000000FF;
 
-            for (int i = 0; i < linearSolution.mask.n * linearSolution.mask.n; i++)
+            for (int i = 0; i < post.mask.n * post.mask.n; i++)
             {
-                if ((linearSolution.mask.cellValues[i] & maskbit) == 0)
+                if ((post.mask.cellValues[i] & maskbit) == 0)
                     continue;
 
-                Point2d pt = linearSolution.mask.IndexToPoint(i);
+                Point2d pt = post.mask.IndexToPoint(i);
                 orgPoints.Add(new Point3d(pt.X, pt.Y, 0));
 
                 Vector3d[] dE = dEigenVecs.DerEigenVec(i);
