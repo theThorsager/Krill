@@ -109,11 +109,6 @@ namespace Krill
 
                 for (int ii = 0; ii < noBonds / 2; ii++)
                 {
-
-                    double counttwice = 1;
-                    if (startVoxels.cellValues[i + nList[ii]] != 0 ^ startVoxels.cellValues[i - nList[ii]] != 0)
-                        counttwice = 1;
-
                     int j = i + nList[ii];
                     if (startVoxels.cellValues[j] != 0)
                     {
@@ -141,7 +136,7 @@ namespace Krill
                                 s *= (fa - (high - fade)) / fade;
                         }
 
-                        AddDyadicProduct(s * xi_eta_vec / y, xi_vec * counttwice, i);
+                        AddDyadicProduct(s * xi_eta_vec / y, xi_vec, i);
                     }
 
                     j = i - nList[ii];
@@ -171,7 +166,7 @@ namespace Krill
                                 s *= (fa - (high - fade)) / fade;
                         }
 
-                        AddDyadicProduct(s * xi_eta_vec / y, xi_vec * counttwice, i);
+                        AddDyadicProduct(s * xi_eta_vec / y, xi_vec, i);
                     }
                 }
 
@@ -188,22 +183,15 @@ namespace Krill
                 double tempYY = Math.Abs(bodyload.cellValues[i].Y / vol) + Math.Abs(springs.cellValues[i].Y * dispVoxels.cellValues[i].Y);
                 tempYY *= reduction;
                 stressYY.cellValues[i] += Math.Sign(stressYY.cellValues[i]) * tempYY;
-
-                //stressXX.cellValues[i] += Math.Abs(bodyload.cellValues[i].X / vol) * reduction;
-                //stressYY.cellValues[i] += Math.Abs(bodyload.cellValues[i].Y / vol) * reduction;
-                //stressXX.cellValues[i] += springs.cellValues[i].X * dispVoxels.cellValues[i].X * reduction;
-                //stressYY.cellValues[i] += springs.cellValues[i].Y * dispVoxels.cellValues[i].Y * reduction;
             }
         }
 
         void AddDyadicProduct(Vector2d a, Vector2d b, int i)
         {
             stressXX.cellValues[i] += a.X * b.X;
-            stressXY.cellValues[i] += a.X * b.Y;
             stressYY.cellValues[i] += a.Y * b.Y;
 
-            double test = a.X * b.Y;
-            double test2 = a.Y * b.X;
+            stressXY.cellValues[i] += 0.5 * (a.X * b.Y + a.Y * b.X);
         }
 
         public void UpdateFakeStress(Voxels2d<Vector2d> dispVoxels)

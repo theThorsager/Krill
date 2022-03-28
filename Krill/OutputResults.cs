@@ -54,6 +54,9 @@ namespace Krill
 
         public Voxels<Vector3d> divOfStress;
 
+        public bool relaxTension = false;
+        public double oldcuttoff = 0.0;
+
         //public OutputResults(Voxels<int> startVoxels, int[] nList, double ElasticModulus, double PoissonsRatio, double bond_stiffness, Voxels<Vector3d> springs, Voxels<Vector3d> bodyload)
         public OutputResults(Containers.LinearSolution linSol, double PoissonsRatio = 0.25)
         {
@@ -106,6 +109,111 @@ namespace Krill
             divOfStress = new Voxels<Vector3d>(origin, delta, n);
         }
 
+        public void UpdateFakeStress2(Voxels<Vector3d> dispVoxels)
+        {
+            // Make the stress strain curve stranger
+            const double low = 0.05;
+            const double high = 0.5;
+            const double fade = 0.1;
+
+            for (int i = 0; i < noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                for (int ii = 0; ii < noBonds / 2; ii++)
+                {
+                    int j = i + nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+                        Vector3d xi_eta_vec = dispVoxels.cellValues[j] - dispVoxels.cellValues[i] + xi_vec;
+
+                        double xi = xi_vec.Length;
+                        double y = xi_eta_vec.Length;
+
+                        double s = (y - xi) / xi;
+
+                        int vols = startVoxels.cellValues[i] >> 20;
+                        vols += startVoxels.cellValues[j] >> 20;
+                        double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
+                        s *= bond_stiffness * vol * factorS;
+
+                        if (relaxTension && s > low * oldcuttoff)
+                        {
+                            double fa = s / oldcuttoff;
+                            if (fa < low + fade)
+                                s *= -(fa - (low + fade)) / fade;
+                            else if (fa < high - fade)
+                                s = 0;
+                            else if (fa < high)
+                                s *= (fa - (high - fade)) / fade;
+                        }
+
+                        AddDyadicProduct(s * xi_eta_vec / y, xi_vec, i);
+                    }
+
+                    j = i - nList[ii];
+                    if (startVoxels.cellValues[j] != 0)
+                    {
+                        Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
+                        Vector3d xi_eta_vec = dispVoxels.cellValues[j] - dispVoxels.cellValues[i] + xi_vec;
+
+                        double xi = xi_vec.Length;
+                        double y = xi_eta_vec.Length;
+
+                        double s = (y - xi) / xi;
+
+                        int vols = startVoxels.cellValues[i] >> 20;
+                        vols += startVoxels.cellValues[j] >> 20;
+                        double factorS = (double)(noBonds * 2.0 + 2.0) / (double)vols;
+                        s *= bond_stiffness * vol * factorS;
+
+                        if (relaxTension && s > low * oldcuttoff)
+                        {
+                            double fa = s / oldcuttoff;
+                            if (fa < low + fade)
+                                s *= -(fa - (low + fade)) / fade;
+                            else if (fa < high - fade)
+                                s = 0;
+                            else if (fa < high)
+                                s *= (fa - (high - fade)) / fade;
+                        }
+
+                        AddDyadicProduct(s * xi_eta_vec / y, xi_vec, i);
+                    }
+                }
+
+                stressXX.cellValues[i] *= 0.5;
+                stressXY.cellValues[i] *= 0.5;
+                stressYY.cellValues[i] *= 0.5;
+
+                // the BCs force contributions should be added
+                double reduction = startVoxels.delta;
+                double tempXX = Math.Abs(bodyload.cellValues[i].X / vol) + Math.Abs(springs.cellValues[i].X * dispVoxels.cellValues[i].X);
+                tempXX *= reduction;
+                stressXX.cellValues[i] += Math.Sign(stressXX.cellValues[i]) * tempXX;
+
+                double tempYY = Math.Abs(bodyload.cellValues[i].Y / vol) + Math.Abs(springs.cellValues[i].Y * dispVoxels.cellValues[i].Y);
+                tempYY *= reduction;
+                stressYY.cellValues[i] += Math.Sign(stressYY.cellValues[i]) * tempYY;
+
+                double tempZZ = Math.Abs(bodyload.cellValues[i].Z / vol) + Math.Abs(springs.cellValues[i].Z * dispVoxels.cellValues[i].Z);
+                tempZZ *= reduction;
+                stressZZ.cellValues[i] += Math.Sign(stressZZ.cellValues[i]) * tempZZ;
+            }
+        }
+
+        void AddDyadicProduct(Vector3d a, Vector3d b, int i)
+        {
+            stressXX.cellValues[i] += a.X * b.X;
+            stressYY.cellValues[i] += a.Y * b.Y;
+            stressZZ.cellValues[i] += a.Z * b.Z;
+
+            stressXY.cellValues[i] += 0.5 * (a.X * b.Y + a.Y * b.X);
+            stressXZ.cellValues[i] += 0.5 * (a.X * b.Z + a.Z * b.X);
+            stressYZ.cellValues[i] += 0.5 * (a.Y * b.Z + a.Z * b.Y);
+        }
         public void UpdateFakeStress(Voxels<Vector3d> dispVoxels)
         {
             for (int i = 0; i < noVoxels; i++)
