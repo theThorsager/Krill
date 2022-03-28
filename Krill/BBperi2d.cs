@@ -414,7 +414,7 @@ namespace Krill
             double y = xi_eta_vec.Length;
             double s = (y - xi) / xi;      // Engineering strain
 
-            double f = s * bond_stiffness * vol;
+            double f = s * bond_stiffness * vol * factor;
 
             // Make the stress strain curve stranger
             const double low = 0.05;
@@ -434,8 +434,8 @@ namespace Krill
                     newcuttoff = f;
             }
 
-            forceVoxels.cellValues[i] += factor * f * xi_eta_vec / y;
-            utilization.cellValues[i] += Math.Sqrt(Math.Abs(factor * f));
+            forceVoxels.cellValues[i] += f * xi_eta_vec / y;
+            utilization.cellValues[i] += Math.Sqrt(Math.Abs(f));
         }
 
         public void UpdateDisp(double c)

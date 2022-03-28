@@ -107,8 +107,9 @@ namespace Krill.Grasshopper
             pLine = new List<Polyline>();
 
             OutputResults2d outputR = new OutputResults2d(linearSolution);
-            outputR.UpdateFakeStrains(linearSolution.displacments);
-            outputR.UpdateStresses();
+            //outputR.UpdateFakeStrains(linearSolution.displacments);
+            //outputR.UpdateStresses();
+            outputR.UpdateFakeStress2(linearSolution.displacments);
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
 

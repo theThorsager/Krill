@@ -384,7 +384,7 @@ namespace Krill.Grasshopper
                         displacments = model.dispVoxels,
                         peridelta = settings.delta,
                         elasticModulus = settings.E,
-                        bondStiffness = settings.bond_stiffness,
+                        bondStiffness = settings.bond_stiffness2d,
                         nList = model.nlist,
                         springs = model.spring,
                         bodyload = model.bodyload,

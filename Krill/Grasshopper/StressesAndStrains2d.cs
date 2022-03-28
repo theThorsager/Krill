@@ -71,14 +71,14 @@ namespace Krill.Grasshopper
 
             // Do work
             OutputResults2d outputR = new OutputResults2d(linearSolution);
-            outputR.UpdateFakeStrains(linearSolution.displacments);
-            //outputR.UpdateFakeStress(linearSolution.displacments);
-            outputR.UpdateStresses();
+            //outputR.UpdateFakeStrains(linearSolution.displacments);
+            //outputR.UpdateStresses();
+            outputR.UpdateFakeStress2(linearSolution.displacments);
             outputR.UpdateVonMises();
             outputR.UpdatePrincipalStresses();
-            outputR.UpdateDsDx(linearSolution.displacments);
-            outputR.NormalizeStressTensor();
-            outputR.CalcCurlOfStressField();
+            //outputR.UpdateDsDx(linearSolution.displacments);
+            //outputR.NormalizeStressTensor();
+            //outputR.CalcCurlOfStressField();
 
             List<Point3d> orgPoints = new List<Point3d>();
 

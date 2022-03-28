@@ -67,16 +67,16 @@ namespace Krill.Grasshopper.Param
             
             //double c = Analytical(K3d, d);
             //double c = StiffnessMod(K3d, Delta);
-            double c = VolumeCorr(K3d, Delta, delta);
+            //double c = VolumeCorr(K3d, Delta, delta);
             //c = Analytical2d(E, d);
 
-            DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
-            { 
-                Delta = Delta, 
-                delta = delta, 
-                bond_stiffness = c, 
-                bond_stiffness2d = Analytical2d(E, d),
-                n_timesteps = n_t, 
+            DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings()
+            {
+                Delta = Delta,
+                delta = delta,
+                bond_stiffness = VolumeCorr(K3d, Delta, delta),
+                bond_stiffness2d = VolumeCorr2d(E, Delta, delta),
+                n_timesteps = n_t,
                 E = E
             }));
         }
@@ -95,6 +95,24 @@ namespace Krill.Grasshopper.Param
                 c += volume * distance * 2;     // times two due to symmetry
             }
             return 18 * K3d / c;
+        }
+
+        private double VolumeCorr2d(double E, double Delta, double delta)
+        {
+            double K2D = E / (2.0 * (1.0 - 0.333333333));
+
+            int n = (int)Math.Ceiling(delta) * 2 + 1;
+            int[] off = Utility.GetNeighbourOffsets2d(n, delta);
+            Voxels2d<bool> dummy = new Voxels2d<bool>(Point2d.Origin, Delta, n);
+            double c = 0;
+            double volume = Delta * Delta;
+            int I = dummy.ToLinearIndex(n / 2, n / 2);
+            for (int i = 0; i < off.Length; i++)
+            {
+                double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
+                c += volume * distance * 2;     // times two due to symmetry
+            }
+            return 8 * K2D / c;
         }
 
         private double StiffnessMod(double K3d, double Delta)
