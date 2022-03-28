@@ -181,10 +181,18 @@ namespace Krill
 
                 // the BCs force contributions should be added
                 double reduction = startVoxels.delta;
-                stressXX.cellValues[i] += Math.Abs(bodyload.cellValues[i].X / vol) * reduction;
-                stressYY.cellValues[i] += Math.Abs(bodyload.cellValues[i].Y / vol) * reduction;
-                stressXX.cellValues[i] += springs.cellValues[i].X * dispVoxels.cellValues[i].X * reduction;
-                stressYY.cellValues[i] += springs.cellValues[i].Y * dispVoxels.cellValues[i].Y * reduction;
+                double tempXX = Math.Abs(bodyload.cellValues[i].X / vol) + Math.Abs(springs.cellValues[i].X * dispVoxels.cellValues[i].X);
+                tempXX *= reduction;
+                stressXX.cellValues[i] += Math.Sign(stressXX.cellValues[i]) * tempXX;
+
+                double tempYY = Math.Abs(bodyload.cellValues[i].Y / vol) + Math.Abs(springs.cellValues[i].Y * dispVoxels.cellValues[i].Y);
+                tempYY *= reduction;
+                stressYY.cellValues[i] += Math.Sign(stressYY.cellValues[i]) * tempYY;
+
+                //stressXX.cellValues[i] += Math.Abs(bodyload.cellValues[i].X / vol) * reduction;
+                //stressYY.cellValues[i] += Math.Abs(bodyload.cellValues[i].Y / vol) * reduction;
+                //stressXX.cellValues[i] += springs.cellValues[i].X * dispVoxels.cellValues[i].X * reduction;
+                //stressYY.cellValues[i] += springs.cellValues[i].Y * dispVoxels.cellValues[i].Y * reduction;
             }
         }
 
