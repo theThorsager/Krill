@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using GH_IO.Serialization;
 using Grasshopper.Kernel;
 using Grasshopper.Kernel.Types;
 using Rhino;
@@ -35,6 +36,18 @@ namespace Krill.Grasshopper.Param
         public LinearSolution2dGoo(LinearSolution2dGoo linSol)
         {
             this.Value = linSol.Value;
+        }
+
+        public override bool Write(GH_IWriter writer)
+        {
+            Krill.Grasshopper.WritingHelper.GH_WriterHelper.Write(writer, "this", Value);
+            return base.Write(writer);
+        }
+
+        public override bool Read(GH_IReader reader)
+        {
+            Value = WritingHelper.GH_ReaderHelper.Reader(reader, "this", new Containers.LinearSolution2d());
+            return base.Read(reader);
         }
 
         public override bool IsValid => this.Value is null;
