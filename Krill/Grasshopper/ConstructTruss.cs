@@ -106,6 +106,18 @@ namespace Krill.Grasshopper
                 connections.Add(new Tuple<int, int>(a, b));
             }
 
+            for (int i = 0; i < connections.Count; i++)
+            {
+                for (int j = connections.Count - 1; j > i; j--)
+                {
+                    if (connections[i].Item1 == connections[j].Item2 && connections[i].Item2 == connections[j].Item1 ||
+                        connections[i].Item1 == connections[j].Item1 && connections[i].Item2 == connections[j].Item2)
+                    {
+                        connections.RemoveAt(j);
+                    }
+                }
+            }
+
             var truss = new Containers.TrussGeometry();
             truss.Nodes = nodes;
             truss.Connections = connections;
