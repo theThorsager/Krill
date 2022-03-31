@@ -14,12 +14,12 @@ namespace Krill
         private Voxels<int> startVoxels;
         private Voxels<Matrix> stressTensor;
 
-        public StressLine(Containers.LinearSolution linSol)
+        public StressLine(Containers.PostProcessingResults post)
         {
-            startVoxels = linSol.mask;
-            OutputResults results = new OutputResults(linSol);
-            results.UpdateFakeStrains(linSol.displacments);
-            results.UpdateStresses();
+            startVoxels = post.mask;
+            //OutputResults results = new OutputResults(post);
+            //results.UpdateFakeStrains(post.displacments);
+            //results.UpdateStresses();
 
             int noVoxels = startVoxels.n * startVoxels.n * startVoxels.n;
 
@@ -31,17 +31,17 @@ namespace Krill
                     continue;
 
                 Matrix tensor = new Matrix(3, 3);
-                tensor[0, 0] = results.stressXX.cellValues[i];
-                tensor[0, 1] = results.stressXY.cellValues[i];
-                tensor[0, 2] = results.stressXZ.cellValues[i];
+                tensor[0, 0] = post.stressXX.cellValues[i];
+                tensor[0, 1] = post.stressXY.cellValues[i];
+                tensor[0, 2] = post.stressXZ.cellValues[i];
 
-                tensor[1, 0] = results.stressXY.cellValues[i];
-                tensor[1, 1] = results.stressYY.cellValues[i];
-                tensor[1, 2] = results.stressYZ.cellValues[i];
+                tensor[1, 0] = post.stressXY.cellValues[i];
+                tensor[1, 1] = post.stressYY.cellValues[i];
+                tensor[1, 2] = post.stressYZ.cellValues[i];
 
-                tensor[2, 0] = results.stressXZ.cellValues[i];
-                tensor[2, 1] = results.stressYZ.cellValues[i];
-                tensor[2, 2] = results.stressZZ.cellValues[i];
+                tensor[2, 0] = post.stressXZ.cellValues[i];
+                tensor[2, 1] = post.stressYZ.cellValues[i];
+                tensor[2, 2] = post.stressZZ.cellValues[i];
 
                 stressTensor.cellValues[i] = tensor;
             }
