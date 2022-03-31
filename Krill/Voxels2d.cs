@@ -14,6 +14,9 @@ namespace Krill
         public int n;
         public T[] cellValues;
 
+        public Voxels2d()
+        { }
+
         public Voxels2d(Point2d origin, double delta, int n)
         {
             this.origin = origin;
