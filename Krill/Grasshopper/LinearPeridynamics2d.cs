@@ -71,6 +71,9 @@ namespace Krill.Grasshopper
                 case 3:
                     Message = "Converging: " + min.ToString("0.00%");
                     break;
+                case 4:
+                    Message = "Relaxing: " + min.ToString("0.00%");
+                    break;
                 default:
                     break;
             }
@@ -366,7 +369,7 @@ namespace Krill.Grasshopper
 
                 //        conduit.SetDisplacments(model.dispVoxels);
                 //        conduit.Update();
-                //        ReportProgress(Id, (Math.Log(residual) - residual_scale) / (logtol - residual_scale));
+                //        ReportProgress(Id, 4.0  + Math.Max(0 ,(Math.Log(residual) - residual_scale) / (logtol - residual_scale)));
                 //    }
                 //    // Check termination criteria
                 //    if (residual < tolerance)
