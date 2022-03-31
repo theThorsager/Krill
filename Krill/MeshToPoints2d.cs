@@ -122,9 +122,9 @@ namespace Krill
             FillBoundaryValuesBC(bc.curve, val, delta);
         }
 
-        public void SetBCN(Containers.IBoundaryCondition2d bc, int val)
+        public void SetBCN(Containers.IBoundaryCondition2d bc, double delta, int val)
         {
-            FillBoundaryValuesBC(bc.curve, val, 1.01);
+            FillBoundaryValuesBC(bc.curve, val, delta);
         }
         
         public void RefineBoundaries()

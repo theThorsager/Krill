@@ -631,38 +631,184 @@ namespace Krill
                 }
             }
 
-            return absoluteForce;
+            return absoluteForce / vol;
             return absoluteForce - totalVec.Length;
         }
 
+        //public void SetNuemann(BoundaryConditionNuemann bc, int tag)
+        //{
+        //    int tot = startVoxels.cellValues.Count(x => (x & tag) != 0 && (x & 3) != 0);
+
+        //    for (int k = padding; k < noVoxels - padding; k++)
+        //    {
+        //        for (int j = padding; j < noVoxels - padding; j++)
+        //        {
+        //            for (int i = padding; i < noVoxels - padding; i++)
+        //            {
+        //                int I = startVoxels.ToLinearIndex(i, j, k);
+        //                if ((startVoxels.cellValues[I] & tag) == 0 || (startVoxels.cellValues[I] & 3) == 0)
+        //                    continue;
+
+        //                Vector3d load = bc.load;
+        //                // divide by number of cells
+        //                load /= tot;
+
+        //                // reorient to normal direction
+        //                if (bc.normal)
+        //                {
+        //                    bc.area.ClosestPoint(startVoxels.IndexToPoint(I), out Point3d trash, out Vector3d normal, startVoxels.delta * 0.87 /* sqrt(3)/2 */);
+        //                    load = normal * load.Z;
+        //                }
+
+        //                bodyload.cellValues[I] += load;
+        //            }
+        //        }
+        //    }
+        //}
+
         public void SetNuemann(BoundaryConditionNuemann bc, int tag)
         {
-            int tot = startVoxels.cellValues.Count(x => (x & tag) != 0 && (x & 3) != 0);
+            // Find on how many voxels the load will be placed, such that the load per exterior voxel can be set
 
-            for (int k = padding; k < noVoxels - padding; k++)
+            // Redistribute those onto the interior voxels through the bond stiffnesses
+
+            int count = 0;
+            List<int> indices = new List<int>();
+            for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
             {
-                for (int j = padding; j < noVoxels - padding; j++)
+                if ((startVoxels.cellValues[i] & tag) == 0 || (startVoxels.cellValues[i] & 3) != 0)
+                    continue;
+
+                bool connects = false;
+                for (int a = 0; a < nlist.Length; a++)
                 {
-                    for (int i = padding; i < noVoxels - padding; i++)
+                    int J = i + nlist[a];
+                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
                     {
-                        int I = startVoxels.ToLinearIndex(i, j, k);
-                        if ((startVoxels.cellValues[I] & tag) == 0 || (startVoxels.cellValues[I] & 3) == 0)
-                            continue;
+                        connects = true;
+                        break;
+                    }
 
-                        Vector3d load = bc.load;
-                        // divide by number of cells
-                        load /= tot;
-
-                        // reorient to normal direction
-                        if (bc.normal)
-                        {
-                            bc.area.ClosestPoint(startVoxels.IndexToPoint(I), out Point3d trash, out Vector3d normal, startVoxels.delta * 0.87 /* sqrt(3)/2 */);
-                            load = normal * load.Z;
-                        }
-
-                        bodyload.cellValues[I] += load;
+                    J = i - nlist[a];
+                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
+                    {
+                        connects = true;
+                        break;
                     }
                 }
+                if (connects)
+                {
+                    count++;
+                    indices.Add(i);
+                }
+            }
+            Vector3d globalLoad = bc.load;
+
+            var oldload = new List<Vector3d>();
+            var kss = new List<double[]>();
+            var normals = new List<Vector3d>();
+
+            for (int a = 0; a < indices.Count; a++)
+            {
+                int i = indices[a];
+                var ks = new double[nlist.Length * 2];
+                kss.Add(ks);
+
+                Vector3d normal = globalLoad / globalLoad.Length;
+                Vector3d loadPerVoxel = globalLoad / count;
+                var pt = startVoxels.IndexToPoint(i);
+                bc.area.ClosestPoint(pt, out var onMesh, out var surfaceNormal, startVoxels.delta * 7);
+                if (bc.normal)
+                {
+                    var temp = surfaceNormal * globalLoad.Z;
+                    loadPerVoxel = temp / count;
+                    normal = surfaceNormal;
+                }
+                oldload.Add(loadPerVoxel);
+                normals.Add(normal);
+
+                for (int aa = 0; aa < nlist.Length; aa++)
+                {
+                    int J = i + nlist[aa];
+                    if (J < startVoxels.cellValues.Length && (startVoxels.cellValues[J] & tag) != 0)
+                    {
+                        Vector3d xi_vec = startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i);
+                        if (xi_vec * surfaceNormal < 0)
+                        {
+                            double l = xi_vec.Length;
+                            stiffnessMod.cellValues[i] += l;
+
+                            xi_vec.X *= xi_vec.X;
+                            xi_vec.Y *= xi_vec.Y;
+                            xi_vec *= bond_stiffness * vol / (l * l * l);
+                            ks[aa] = xi_vec * normal;
+                        }
+                    }
+
+                    J = i - nlist[aa];
+                    if (J >= 0 && (startVoxels.cellValues[J] & tag) != 0)
+                    {
+                        Vector3d xi_vec = startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i);
+                        if (xi_vec * surfaceNormal < 0)
+                        {
+                            double l = xi_vec.Length;
+                            stiffnessMod.cellValues[i] += l;
+
+                            xi_vec.X *= xi_vec.X;
+                            xi_vec.Y *= xi_vec.Y;
+                            xi_vec *= bond_stiffness * vol / (l * l * l);
+                            ks[nlist.Length + aa] = xi_vec * normal;
+                        }
+                    }
+                }
+            }
+
+            var newloads = new Dictionary<int, Vector3d>();
+            // iterate
+            for (int ii = 0; ii < 100; ii++)
+            {
+                for (int i = 0; i < indices.Count; i++)
+                {
+                    int I = indices[i];
+                    double K = kss[i].Sum();
+                    double beta = oldload[i].Length / K;
+
+                    for (int aa = 0; aa < nlist.Length; aa++)
+                    {
+                        int J = I + nlist[aa];
+                        if (Math.Abs(kss[i][aa]) > 1e-6)
+                        {
+                            var value = beta * kss[i][aa] * normals[i];
+                            if (newloads.ContainsKey(J))
+                                newloads[J] += value;
+                            else
+                                newloads[J] = value;
+                        }
+
+                        J = I - nlist[aa];
+                        if (Math.Abs(kss[i][nlist.Length + aa]) > 1e-6)
+                        {
+                            var value = beta * kss[i][nlist.Length + aa] * normals[i];
+                            if (newloads.ContainsKey(J))
+                                newloads[J] += value;
+                            else
+                                newloads[J] = value;
+                        }
+                    }
+                }
+                if (newloads.Sum(x => x.Value.SquareLength) < 1e-6 * bc.load.SquareLength)
+                    break;
+
+                for (int i = 0; i < indices.Count; i++)
+                {
+                    newloads.TryGetValue(indices[i], out var value);
+                    oldload[i] = value;
+                }
+                foreach (var pair in newloads)
+                {
+                    bodyload.cellValues[pair.Key] += pair.Value;
+                }
+                newloads.Clear();
             }
         }
 
@@ -722,9 +868,9 @@ namespace Krill
             resSpringConstant *= factor;
             spring.cellValues[i] += resSpringConstant;
             // Calculate a bodyload based on enforced displacment and the spring constant
-            resBodyLoad.X = -disp.X * resSpringConstant.X;
-            resBodyLoad.Y = -disp.Y * resSpringConstant.Y;
-            resBodyLoad.Z = -disp.Z * resSpringConstant.Z;
+            resBodyLoad.X = -disp.X * resSpringConstant.X * vol;
+            resBodyLoad.Y = -disp.Y * resSpringConstant.Y * vol;
+            resBodyLoad.Z = -disp.Z * resSpringConstant.Z * vol;
             bodyload.cellValues[i] += resBodyLoad;
         }
 

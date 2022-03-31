@@ -142,7 +142,7 @@ namespace Krill.Grasshopper
                     }
                     else if (bc is BoundaryConditionNuemann2d bcN)
                     {
-                        meshToPoints.SetBCN(bcN, 1);
+                        meshToPoints.SetBCN(bcN, settings.delta, 1);
                         BoundaryMeshes.Add(Voxels2d<int>.GetBoundaryMesh(dummy));
                         Voxels2d<int>.MaskValues(dummy, 1);
                     }

@@ -202,11 +202,11 @@ namespace Krill
             mesh = temp;
         }
 
-        public void SetBCN(Containers.IBoundaryCondition bc, int val)
+        public void SetBCN(Containers.IBoundaryCondition bc, double delta, int val)
         {
             Mesh temp = mesh;
             mesh = bc.area;
-            FillBoundaryValuesBC(val, 1.01);
+            FillBoundaryValuesBC(val, delta);
 
             mesh = temp;
         }

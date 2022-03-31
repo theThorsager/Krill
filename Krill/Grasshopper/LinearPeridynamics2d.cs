@@ -260,7 +260,7 @@ namespace Krill.Grasshopper
                     {
                         count++;
                         int tag = 1 << 3;
-                        meshToPoints.SetBCN(bcN, tag);
+                        meshToPoints.SetBCN(bcN, settings.delta, tag);
                         model.SetNuemann(bcN, tag);
                         // removing the tag should not be needed :)
                         Voxels2d<int>.MaskValues(mask, tag);

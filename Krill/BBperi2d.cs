@@ -486,13 +486,7 @@ namespace Krill
         public double ComputeResidual(double F)
         {
             // residual of our equations
-            double R = forceVoxels.cellValues.Sum(x =>
-            {
-                double res = x.X > 0 ? x.X : -x.X;
-                res += x.Y > 0 ? x.Y : -x.Y;
-                return res;
-            }
-            );
+            double R = 0;
 
             // number of relevant points
             int n = 0;
@@ -504,6 +498,10 @@ namespace Krill
                 if ((startVoxels.cellValues[i] & maskbit) == 0)
                     continue;
 
+                var x = forceVoxels.cellValues[i];
+                double res = x.X > 0 ? x.X : -x.X;
+                res += x.Y > 0 ? x.Y : -x.Y;
+                R += res;
                 ++n;
             }
             //F *= bond_stiffness / n;
@@ -560,37 +558,185 @@ namespace Krill
                 }
             }
 
-            return absoluteForce;
+            return absoluteForce / vol;
         }
+
+        //public void SetNuemann(BoundaryConditionNuemann2d bc, int tag)
+        //{
+        //    int tot = startVoxels.cellValues.Count(x => (x & tag) != 0 && (x & 3) != 0);
+
+        //    for (int j = padding; j < noVoxels - padding; j++)
+        //    {
+        //        for (int i = padding; i < noVoxels - padding; i++)
+        //        {
+        //            int I = startVoxels.ToLinearIndex(i, j);
+        //            if ((startVoxels.cellValues[I] & tag) == 0 || (startVoxels.cellValues[I] & 3) == 0)
+        //                continue;
+
+        //            Vector2d load = new Vector2d(bc.load.X, bc.load.Y);
+        //            // divide by number of cells
+        //            load /= tot;
+
+        //            // reorient to normal direction
+        //            if (bc.normal)
+        //            {
+        //                var pt = startVoxels.IndexToPoint(I);
+        //                bc.curve.ClosestPoint(new Point3d(pt.X, pt.Y, 0), out var t);
+        //                var normal = Vector3d.CrossProduct(bc.curve.TangentAt(t), Vector3d.ZAxis);
+        //                var temp = normal * load.Y;
+        //                load = new Vector2d(temp.X, temp.Y);
+        //            }
+
+        //            bodyload.cellValues[I] += load;
+        //        }
+        //    }
+        //}
 
         public void SetNuemann(BoundaryConditionNuemann2d bc, int tag)
         {
-            int tot = startVoxels.cellValues.Count(x => (x & tag) != 0 && (x & 3) != 0);
+            // Find on how many voxels the load will be placed, such that the load per exterior voxel can be set
 
-            for (int j = padding; j < noVoxels - padding; j++)
+            // Redistribute those onto the interior voxels through the bond stiffnesses
+
+            int count = 0;
+            List<int> indices = new List<int>();
+            for (int i = 0; i < noVoxels * noVoxels; i++)
             {
-                for (int i = padding; i < noVoxels - padding; i++)
+                if ((startVoxels.cellValues[i] & tag) == 0 || (startVoxels.cellValues[i] & 3) != 0)
+                    continue;
+
+                bool connects = false;
+                for (int a = 0; a < nlist.Length; a++)
                 {
-                    int I = startVoxels.ToLinearIndex(i, j);
-                    if ((startVoxels.cellValues[I] & tag) == 0 || (startVoxels.cellValues[I] & 3) == 0)
-                        continue;
-
-                    Vector2d load = new Vector2d(bc.load.X, bc.load.Y);
-                    // divide by number of cells
-                    load /= tot;
-
-                    // reorient to normal direction
-                    if (bc.normal)
+                    int J = i + nlist[a];
+                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
                     {
-                        var pt = startVoxels.IndexToPoint(I);
-                        bc.curve.ClosestPoint(new Point3d(pt.X, pt.Y, 0), out var t);
-                        var normal = Vector3d.CrossProduct(bc.curve.TangentAt(t), Vector3d.ZAxis);
-                        var temp = normal * load.Y;
-                        load = new Vector2d(temp.X, temp.Y);
+                        connects = true;
+                        break;
                     }
 
-                    bodyload.cellValues[I] += load;
+                    J = i - nlist[a];
+                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
+                    {
+                        connects = true;
+                        break;
+                    }
                 }
+                if (connects)
+                {
+                    count++;
+                    indices.Add(i);
+                }
+            }
+            Vector2d globalLoad = new Vector2d(bc.load.X, bc.load.Y);
+
+            var oldload = new List<Vector2d>();
+            var kss = new List<double[]>();
+            var normals = new List<Vector2d>();
+
+            for (int a = 0; a < indices.Count; a++)
+            {
+                int i = indices[a];
+                var ks = new double[nlist.Length * 2];
+                kss.Add(ks);
+
+                Vector2d normal = globalLoad / globalLoad.Length;
+                Vector2d loadPerVoxel = globalLoad / count;
+                var pt = startVoxels.IndexToPoint(i);
+                bc.curve.ClosestPoint(new Point3d(pt.X, pt.Y, 0), out var t);
+                var normal3d = Vector3d.CrossProduct(bc.curve.TangentAt(t), Vector3d.ZAxis);
+                var surfaceNormal = new Vector2d(normal3d.X, normal3d.Y);
+                if (bc.normal)
+                {
+                    var temp = normal3d * globalLoad.Y;
+                    loadPerVoxel = new Vector2d(temp.X, temp.Y) / count;
+                    normal = new Vector2d(normal3d.X, normal3d.Y);
+                }
+                oldload.Add(loadPerVoxel);
+                normals.Add(normal);
+
+                for (int aa = 0; aa < nlist.Length; aa++)
+                {
+                    int J = i + nlist[aa];
+                    if (J < startVoxels.cellValues.Length && (startVoxels.cellValues[J] & tag) != 0)
+                    {
+                        Vector2d xi_vec = startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i);
+                        if (xi_vec * surfaceNormal < 0)
+                        {
+                            double l = xi_vec.Length;
+                            stiffnessMod.cellValues[i] += l;
+
+                            xi_vec.X *= xi_vec.X;
+                            xi_vec.Y *= xi_vec.Y;
+                            xi_vec *= bond_stiffness * vol / (l * l * l);
+                            ks[aa] = xi_vec * normal;
+                        }
+                    }
+
+                    J = i - nlist[aa];
+                    if (J >= 0 && (startVoxels.cellValues[J] & tag) != 0)
+                    {
+                        Vector2d xi_vec = startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i);
+                        if (xi_vec * surfaceNormal < 0)
+                        {
+                            double l = xi_vec.Length;
+                            stiffnessMod.cellValues[i] += l;
+
+                            xi_vec.X *= xi_vec.X;
+                            xi_vec.Y *= xi_vec.Y;
+                            xi_vec *= bond_stiffness * vol / (l * l * l);
+                            ks[nlist.Length + aa] = xi_vec * normal;
+                        }
+                    }
+                }
+            }
+
+            var newloads = new Dictionary<int, Vector2d>();
+            // iterate
+            for (int ii = 0; ii < 100; ii++)
+            {
+                for (int i = 0; i < indices.Count; i++)
+                {
+                    int I = indices[i];
+                    double K = kss[i].Sum();
+                    double beta = oldload[i].Length / K;
+
+                    for (int aa = 0; aa < nlist.Length; aa++)
+                    {
+                        int J = I + nlist[aa];
+                        if (Math.Abs(kss[i][aa]) > 1e-6)
+                        {
+                            var value = beta * kss[i][aa] * normals[i];
+                            if (newloads.ContainsKey(J))
+                                newloads[J] += value;
+                            else
+                                newloads[J] = value;
+                        }
+
+                        J = I - nlist[aa];
+                        if (Math.Abs(kss[i][nlist.Length + aa]) > 1e-6)
+                        {
+                            var value = beta * kss[i][nlist.Length + aa] * normals[i];
+                            if (newloads.ContainsKey(J))
+                                newloads[J] += value;
+                            else
+                                newloads[J] = value;
+                        }
+                    }
+                }
+                if (newloads.Sum(x => x.Value.SquareLength) < 1e-6 * bc.load.SquareLength)
+                    break;
+
+                for (int i = 0; i < indices.Count; i++)
+                {
+                    newloads.TryGetValue(indices[i], out var value);
+                    oldload[i] = value;
+                }
+                foreach (var pair in newloads)
+                {
+                    bodyload.cellValues[pair.Key] += pair.Value;
+                }
+                newloads.Clear();
             }
         }
 
@@ -651,8 +797,8 @@ namespace Krill
             resSpringConstant *= factor;
             spring.cellValues[i] += resSpringConstant;
             // Calculate a bodyload based on enforced displacement and the spring constant
-            resBodyLoad.X = -disp.X * resSpringConstant.X;
-            resBodyLoad.Y = -disp.Y * resSpringConstant.Y;
+            resBodyLoad.X = -disp.X * resSpringConstant.X * vol;
+            resBodyLoad.Y = -disp.Y * resSpringConstant.Y * vol;
             bodyload.cellValues[i] += resBodyLoad;
         }
 
@@ -707,6 +853,7 @@ namespace Krill
                             ++sum;
                     }
 
+                    startVoxels.cellValues[I] &= ~(0xFFFFF << 20);
                     startVoxels.cellValues[I] |= sum << 20;
                 }
             }
