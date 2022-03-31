@@ -600,6 +600,7 @@ namespace Krill
 
             int count = 0;
             List<int> indices = new List<int>();
+            List<Vector2d> dummyNormals = new List<Vector2d>();
             for (int i = 0; i < noVoxels * noVoxels; i++)
             {
                 if ((startVoxels.cellValues[i] & tag) == 0 || (startVoxels.cellValues[i] & 3) != 0)
@@ -609,16 +610,18 @@ namespace Krill
                 for (int a = 0; a < nlist.Length; a++)
                 {
                     int J = i + nlist[a];
-                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
+                    if (J < startVoxels.cellValues.Length && (startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
                     {
                         connects = true;
+                        dummyNormals.Add(startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i));
                         break;
                     }
 
                     J = i - nlist[a];
-                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
+                    if (J >= 0 && (startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
                     {
                         connects = true;
+                        dummyNormals.Add(startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i));
                         break;
                     }
                 }
@@ -646,11 +649,12 @@ namespace Krill
                 bc.curve.ClosestPoint(new Point3d(pt.X, pt.Y, 0), out var t);
                 var normal3d = Vector3d.CrossProduct(bc.curve.TangentAt(t), Vector3d.ZAxis);
                 var surfaceNormal = new Vector2d(normal3d.X, normal3d.Y);
+                surfaceNormal = surfaceNormal * dummyNormals[a] > 0 ? -surfaceNormal : surfaceNormal;
                 if (bc.normal)
                 {
-                    var temp = normal3d * globalLoad.Y;
-                    loadPerVoxel = new Vector2d(temp.X, temp.Y) / count;
-                    normal = new Vector2d(normal3d.X, normal3d.Y);
+                    var temp = surfaceNormal * globalLoad.Y;
+                    loadPerVoxel = temp / count;
+                    normal = surfaceNormal;
                 }
                 oldload.Add(loadPerVoxel);
                 normals.Add(normal);

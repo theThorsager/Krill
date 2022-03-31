@@ -674,6 +674,7 @@ namespace Krill
 
             int count = 0;
             List<int> indices = new List<int>();
+            var dummyNormals = new List<Vector3d>();
             for (int i = 0; i < noVoxels * noVoxels * noVoxels; i++)
             {
                 if ((startVoxels.cellValues[i] & tag) == 0 || (startVoxels.cellValues[i] & 3) != 0)
@@ -683,16 +684,18 @@ namespace Krill
                 for (int a = 0; a < nlist.Length; a++)
                 {
                     int J = i + nlist[a];
-                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
+                    if (J < startVoxels.cellValues.Length && (startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
                     {
                         connects = true;
+                        dummyNormals.Add(startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i));
                         break;
                     }
 
                     J = i - nlist[a];
-                    if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
+                    if (J >= 0 && (startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) != 0)
                     {
                         connects = true;
+                        dummyNormals.Add(startVoxels.IndexToPoint(J) - startVoxels.IndexToPoint(i));
                         break;
                     }
                 }
@@ -718,6 +721,7 @@ namespace Krill
                 Vector3d loadPerVoxel = globalLoad / count;
                 var pt = startVoxels.IndexToPoint(i);
                 bc.area.ClosestPoint(pt, out var onMesh, out var surfaceNormal, startVoxels.delta * 7);
+                surfaceNormal = surfaceNormal * dummyNormals[a] > 0 ? -surfaceNormal : surfaceNormal;
                 if (bc.normal)
                 {
                     var temp = surfaceNormal * globalLoad.Z;
