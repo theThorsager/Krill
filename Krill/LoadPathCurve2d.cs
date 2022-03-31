@@ -21,7 +21,7 @@ namespace Krill
 
         private double d;
         private int[] nListForN;
-        double nListRadius = 3.1;   // Try with 2.5
+        double nListRadius = 3.1;
 
         public LoadPathCurve2d(Voxels2d<int> startVoxels, Point3d startPt, Vector3d startVec,
                                 Voxels2d<Vector3d[]> princpDir, Voxels2d<Vector3d> princpStress)
@@ -66,7 +66,7 @@ namespace Krill
 
                 Vector2d oldAveDf;
 
-                // int oldSign = Math.Sign(LerpPstress(x0, dfx0));
+                //int oldSign = Math.Sign(LerpPstress(x0, dfx0));
 
                 for (int j = 0; j < 10; j++)
                 {
@@ -86,7 +86,7 @@ namespace Krill
 
                 x1 = x0 + step * moveVec;
 
-                // int newSign = Math.Sign(LerpPstress(x1, moveVec));
+                //int newSign = Math.Sign(LerpPstress(x1, moveVec));
 
                 //if (Math.Abs(oldSign - newSign) == 2)
                 //    break;
@@ -219,8 +219,6 @@ namespace Krill
 
             Vector2d[] dirLERP = new Vector2d[INDs.Count];
 
-            // bool onBoundary = false;
-
             bool[] inside = new bool[INDs.Count];
             for (int i = 0; i < 4; i++)
             {
@@ -233,9 +231,6 @@ namespace Krill
                 }                    
             }
 
-            // Construct avg p-dir of voxels that are inside
-            //Vector3d avgPdir1 = new Vector3d();
-            //Vector3d avgPdir2 = new Vector3d();
             Vector2d avgPdir = new Vector2d();
             if (!inside[0] || !inside[1] || !inside[2] || !inside[3])
             {
@@ -243,13 +238,9 @@ namespace Krill
                 {
                     if (!inside[i])
                         continue;
-                    //avgPdir1 += princpDir.cellValues[INDs[i]][0];
-                    //avgPdir2 += princpDir.cellValues[INDs[i]][1];
 
                     avgPdir += CorrectPrincpDir(INDs[i], previousDir);
                 }
-                //avgPdir1.Unitize();
-                //avgPdir2.Unitize();
                 avgPdir.Unitize();
             }
 
@@ -285,74 +276,13 @@ namespace Krill
 
                 // Mirror the P-dir and assign value
                 Vector2d mirrPdir = avgPdir - (avgPdir * normal) * normal * 2;
-                //Vector3d mirrPdir1 = avgPdir1 - (avgPdir1 * norm3d) * norm3d * 2;
-                //Vector3d mirrPdir2 = avgPdir2 - (avgPdir2 * norm3d) * norm3d * 2;
 
+                // Check that it is in the right direction
                 if (mirrPdir * previousDir < 0)
                     mirrPdir = -mirrPdir;
 
                 dirLERP[i] = mirrPdir;
-
-                //Vector3d[] mirrPdirs = new Vector3d[3];
-                //mirrPdirs[0] = mirrPdir1;
-                //mirrPdirs[1] = mirrPdir2;
-
-                //princpDir.cellValues[INDs[i]] = mirrPdirs;
             }
-            
-
-            /////////////////////////////////////////////////////////////////////////
-            // Den här delen av koden fungerar hyffsat men puttar ibland ut kurvan istället för att dra in den
-            //
-            //if (!inside[0] || !inside[1] || !inside[2] || !inside[3])
-            //{
-            //    onBoundary = true;
-
-            //    List<int> offsets = new List<int>();
-            //    offsets.Add(startVoxels.ToLinearIndex(-1, 0));
-            //    offsets.Add(startVoxels.ToLinearIndex(0, -1));
-            //    offsets.Add(startVoxels.ToLinearIndex(0, 1));
-            //    offsets.Add(startVoxels.ToLinearIndex(1, 0));
-            //    offsets.Add(startVoxels.ToLinearIndex(-1, -1));
-            //    offsets.Add(startVoxels.ToLinearIndex(-1, 1));
-            //    offsets.Add(startVoxels.ToLinearIndex(1, -1));
-            //    offsets.Add(startVoxels.ToLinearIndex(1, 1));
-
-            //    for (int i = 0; i < offsets.Count; i++)
-            //    {
-            //        int[] newINDs = new int[4];
-            //        for (int ii = 0; ii < 4; ii++)
-            //        {
-            //            newINDs[ii] = INDs[ii] + offsets[i];
-            //            if ((startVoxels.cellValues[newINDs[ii]] & maskbit) == 0)
-            //                inside[ii] = false;
-            //            else
-            //                inside[ii] = true;
-            //        }
-
-            //        if (inside[0] && inside[1] && inside[2] && inside[3])
-            //        {
-            //            INDi0j0k0 = newINDs[0];
-            //            INDi1j0k0 = newINDs[1];
-            //            INDi0j1k0 = newINDs[2];
-            //            INDi1j1k0 = newINDs[3];
-
-            //            Coord i0j0 = startVoxels.IndexToCoord(INDi0j0k0);
-
-            //            i0 = i0j0.X;
-            //            j0 = i0j0.Y;
-
-            //            a = ((u - 0.5) - i0) * 2;
-            //            b = ((v - 0.5) - j0) * 2;
-
-            //            break;
-            //        }
-            //    }
-            //}
-
-            //////////////////////////////////////////////////////////////
-            // Flytta så att rätt p-dir beräknas tidigare!!
-            //////////////////////////////////////////////////////////////
             
             // Do the LERP
             dir.X = (1 - a) * (1 - b) * dirLERP[0].X
@@ -365,69 +295,7 @@ namespace Krill
                     + (1 - a) * b * dirLERP[2].Y
                     + a * b * dirLERP[3].Y;
 
-            //dir.X = (1 - a) * (1 - b) * CorrectPrincpDir(INDi0j0k0, previousDir).X
-            //        + a * (1 - b) * CorrectPrincpDir(INDi1j0k0, previousDir).X
-            //        + (1 - a) * b * CorrectPrincpDir(INDi0j1k0, previousDir).X
-            //        + a * b * CorrectPrincpDir(INDi1j1k0, previousDir).X;
-
-            //dir.Y = (1 - a) * (1 - b) * CorrectPrincpDir(INDi0j0k0, previousDir).Y
-            //        + a * (1 - b) * CorrectPrincpDir(INDi1j0k0, previousDir).Y
-            //        + (1 - a) * b * CorrectPrincpDir(INDi0j1k0, previousDir).Y
-            //        + a * b * CorrectPrincpDir(INDi1j1k0, previousDir).Y;
-
             dir.Unitize();
-
-            /////////////////////////////////////////////////////////////////////////////////////////
-            // Den här delen av koden fungerar hemskt
-            // 
-            // Om den går längs med en kant borde riktningen påverkas av om den är påväg in eller ut
-            //if (onBoundary)
-            //{
-            //    // Comparison vector
-            //    Point3d midPt = new Point3d();
-            //    for (int i = 0; i < INDs.Count; i++)
-            //    {
-            //        Point2d pt2d = startVoxels.IndexToPoint(INDs[i]);
-            //        Point3d pt3d = new Point3d(pt2d.X, pt2d.Y, 0);
-            //        midPt += pt3d;
-            //    }
-            //    midPt /= (double)INDs.Count;
-
-            //    Vector3d compVec = midPt - currentPt;
-
-            //    Point2d midPos = new Point2d(midPt.X, midPt.Y);
-
-            //    midPos -= new Vector2d(startVoxels.origin.X, startVoxels.origin.Y);
-            //    midPos /= d;
-
-            //    u = pos.X;
-            //    v = pos.Y;
-
-            //    a = (u - 0.5) - Math.Floor(u - 0.5);
-            //    b = (v - 0.5) - Math.Floor(v - 0.5);
-
-            //    Vector2d dir2 = new Vector2d();
-
-            //    dir2.X = (1 - a) * (1 - b) * CorrectPrincpDir(INDi0j0k0, previousDir).X
-            //        + a * (1 - b) * CorrectPrincpDir(INDi1j0k0, previousDir).X
-            //        + (1 - a) * b * CorrectPrincpDir(INDi0j1k0, previousDir).X
-            //        + a * b * CorrectPrincpDir(INDi1j1k0, previousDir).X;
-
-            //    dir2.Y = (1 - a) * (1 - b) * CorrectPrincpDir(INDi0j0k0, previousDir).Y
-            //            + a * (1 - b) * CorrectPrincpDir(INDi1j0k0, previousDir).Y
-            //            + (1 - a) * b * CorrectPrincpDir(INDi0j1k0, previousDir).Y
-            //            + a * b * CorrectPrincpDir(INDi1j1k0, previousDir).Y;
-
-            //    dir2.Unitize();
-
-            //    Vector3d dir1_3d = new Vector3d(dir.X, dir.Y, 0);
-            //    Vector3d dir2_3d = new Vector3d(dir2.X, dir2.Y, 0);
-
-            //    if (Vector3d.VectorAngle(compVec, dir1_3d) < Vector3d.VectorAngle(compVec, dir2_3d))
-            //        return dir;
-            //    else
-            //        return dir2;
-            //}
 
             return dir;
         }
