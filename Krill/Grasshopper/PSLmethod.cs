@@ -9,17 +9,17 @@ using System.Linq;
 
 namespace Krill.Grasshopper
 {
-    public class PSLmethod2d : GH_AsyncComponent
+    public class PSLmethod : GH_AsyncComponent
     {
         /// <summary>
         /// Initializes a new instance of the PSLmethod class.
         /// </summary>
-        public PSLmethod2d()
-          : base("PSLmethod2d", "PSL2d",
+        public PSLmethod()
+          : base("PSLmethod", "PSL",
               "Description",
               "Krill", "Utility")
         {
-            BaseWorker = new PSLWorker2d();
+            BaseWorker = new PSLWorker();
         }
 
         public override void RemovedFromDocument(GH_Document document)
@@ -45,12 +45,13 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddParameter(new Param.PostProcessingResultsParam2d());
-            pManager.AddParameter(new Param.BoundaryConditionParam2d(), "BoundaryConditions", "BCs", "", GH_ParamAccess.list);
+            pManager.AddParameter(new Param.PostProcessingResultsParam());
+            pManager.AddParameter(new Param.BoundaryConditionParam(), "BoundaryConditions", "BCs", "", GH_ParamAccess.list);
             pManager.AddPointParameter("StartPoints", "pts", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("ScaleFactorForDelta", "sf", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("ToleranceNodeRegion", "tolNode", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("OffsetNodeRegion", "offsetNode", "", GH_ParamAccess.item);
+            pManager.AddNumberParameter("ToleranceIntersection", "tolInt", "", GH_ParamAccess.item);
         }
 
         /// <summary>
@@ -91,17 +92,18 @@ namespace Krill.Grasshopper
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("34319B02-57F1-40E9-AA17-F0E2CE064FEE"); }
+            get { return new Guid("F1731901-9D9A-43E2-9501-D9E23635B6B9"); }
         }
     }
-    class PSLWorker2d : WorkerInstance
+    class PSLWorker : WorkerInstance
     {
-        Containers.PostProcessingResults2d post = null;
-        List<IBoundaryCondition2d> BCs { get; set; } = null;        
+        Containers.PostProcessingResults post = null;
+        List<IBoundaryCondition> BCs { get; set; } = null;        
         List<Point3d> startPoints { get; set; }
         double scaleDelta { get; set; }
         double tol { get; set; }
         double offsetTol { get; set; }
+        double intTol { get; set; }
 
         List<Polyline> pLine { get; set; } = null;
         List<Polyline> phaseIcrvs { get; set; } = null;
@@ -109,7 +111,7 @@ namespace Krill.Grasshopper
         List<Polyline> phaseIIcrvs { get; set; } = null;
         List<Line> truss { get; set; } = null;
         const int maskbit = 0x000000FF;
-        public PSLWorker2d() : base(null)
+        public PSLWorker() : base(null)
         { }
 
         public override void DoWork(Action<string, double> ReportProgress, Action Done)
@@ -126,16 +128,19 @@ namespace Krill.Grasshopper
             phaseIIcrvs = new List<Polyline>();
             truss = new List<Line>();
 
-            Vector3d[] startDirs = new Vector3d[4];
+            //////////////////////// Add more
+            Vector3d[] startDirs = new Vector3d[6];
             startDirs[0] = Vector3d.XAxis;
             startDirs[1] = -Vector3d.XAxis;
             startDirs[2] = Vector3d.YAxis;
             startDirs[3] = -Vector3d.YAxis;
+            startDirs[4] = Vector3d.ZAxis;
+            startDirs[5] = -Vector3d.ZAxis;
 
             double delta = post.mask.delta;
 
-            List<Curve> dCrvs = new List<Curve>();
-            List<Curve> nCrvs = new List<Curve>();
+            List<Mesh> dAreas = new List<Mesh>();
+            List<Mesh> nAreas = new List<Mesh>();
 
             List<PhaseI> pI = new List<PhaseI>();
             List<PhaseII> pII = new List<PhaseII>();
@@ -145,12 +150,12 @@ namespace Krill.Grasshopper
             if (CancellationToken.IsCancellationRequested)
                 return;
 
-            foreach (IBoundaryCondition2d bc in BCs)
+            foreach (IBoundaryCondition bc in BCs)
             {
-                if (bc is BoundaryConditionDirechlet2d bcD)                
-                    dCrvs.Add(bcD.curve);
-                else if (bc is BoundaryConditionNuemann2d bcN)
-                    nCrvs.Add(bcN.curve);
+                if (bc is BoundaryConditionDirechlet bcD)                
+                    dAreas.Add(bcD.area);
+                else if (bc is BoundaryConditionNuemann bcN)
+                    nAreas.Add(bcN.area);
             }
 
             ///////////////////////////////////////////////////////////////////////////////////////////
@@ -162,7 +167,7 @@ namespace Krill.Grasshopper
 
                 for (int j = 0; j < startDirs.Length; j++)
                 {
-                    LoadPathCurve2d lPath = new LoadPathCurve2d(post.mask, startPoints[i], startDirs[j], post.princpDir, post.princpStress);
+                    LoadPathCurve lPath = new LoadPathCurve(post.mask, startPoints[i], startDirs[j], post.princpDir, post.princpStress);
                     lPath.ConstructLoadPath(scaleDelta);
                     if (lPath.loadPath.IsValid)
                         pLine.Add(lPath.loadPath);
@@ -174,15 +179,15 @@ namespace Krill.Grasshopper
                 plToBc[i] = false;
 
             // Searching against D-boundary
-            for (int i = 0; i < dCrvs.Count; i++)
+            for (int i = 0; i < dAreas.Count; i++)
             {
                 for (int j = 0; j < pLine.Count; j++)
                 {
-                    if (dCrvs[i].ClosestPoint(pLine[j].Last, out double t, delta * 2))
+                    if (dAreas[i].ClosestPoint(pLine[j].Last, out Point3d ptOnMesh, delta * 2) != -1)
                     {
                         PhaseI newPI = new PhaseI(pLine[j]);
                         newPI.startPt = newPI.pLine.First;
-                        newPI.endPt = dCrvs[i].PointAt(t);
+                        newPI.endPt = ptOnMesh;
 
                         pI.Add(newPI);
 
@@ -198,28 +203,76 @@ namespace Krill.Grasshopper
 
             for (int i = 0; i < pLine.Count; i++)
             {
+                List<double> closeTvals = new List<double>();
+                List<int> jVals = new List<int>();
+
                 for (int j = 0; j < startPoints.Count; j++)
                 {
-                    Point3d pt = pLine[i].ClosestPoint(startPoints[j]);
+                    
+                    double t = pLine[i].ClosestParameter(startPoints[j]);
+                    Point3d pt = pLine[i].PointAt(t);
 
                     if (pt.DistanceToSquared(startPoints[j]) < tol * tol && pt.DistanceToSquared(pLine[i].First) > tol * tol)
                     {
-                        PhaseI newPI = new PhaseI(pLine[i]);
-                        newPI.startPt = newPI.pLine.First;
-                        newPI.endPt = startPoints[j];
-                        
-                        if (pI.Last().startPt.DistanceToSquared(newPI.endPt) > tol &&
-                            pI.Last().endPt.DistanceToSquared(newPI.startPt) > tol)
+                        closeTvals.Add(t);
+                        jVals.Add(j);
+                        //PhaseI newPI = new PhaseI(pLine[i]);
+                        //newPI.startPt = newPI.pLine.First;
+                        //newPI.endPt = startPoints[j];
+
+                        //if (pI.Last().startPt.DistanceToSquared(newPI.endPt) > tol &&
+                        //    pI.Last().endPt.DistanceToSquared(newPI.startPt) > tol)
+                        //{
+                        //    pI.Add(newPI);
+
+                        //    phaseIcrvs.Add(newPI.pLine);
+
+                        //    CorrectNode(ref nodes, newPI.startPt, tol, out bool bol);
+                        //    CorrectNode(ref nodes, newPI.endPt, tol, out bol);
+
+                        //    plToBc[i] = true;
+                        //}
+                    }
+                }
+                if (closeTvals.Count > 0)
+                {
+                    double t = closeTvals.Min();
+                    int ind = -1;
+                    for (int j = 0; j < closeTvals.Count; j++)
+                    {
+                        if (closeTvals[j] == t)
                         {
-                            pI.Add(newPI);
-
-                            phaseIcrvs.Add(newPI.pLine);
-
-                            CorrectNode(ref nodes, newPI.startPt, tol, out bool bol);
-                            CorrectNode(ref nodes, newPI.endPt, tol, out bol);
-
-                            plToBc[i] = true;
+                            ind = jVals[j];
+                            break;
                         }
+                    }
+                    PhaseI newPI = new PhaseI(CutPolyline(pLine[i], t));
+                    newPI.startPt = newPI.pLine.First;
+                    newPI.endPt = startPoints[ind];
+
+                    bool add = true;
+
+                    for (int k = 0; k < pI.Count; k++)
+                    {
+                        if ((pI[k].startPt.DistanceToSquared(newPI.startPt) < tol*tol && pI[k].endPt.DistanceToSquared(newPI.endPt) < tol*tol) ||
+                            (pI[k].startPt.DistanceToSquared(newPI.endPt) < tol * tol && pI[k].endPt.DistanceToSquared(newPI.startPt) < tol * tol))
+                        {
+                            add = false;
+                            break;
+                        }
+                    }
+
+                    if (add)
+                    {
+                        pI.Add(newPI);
+
+                        phaseIcrvs.Add(newPI.pLine);
+
+                        CorrectNode(ref nodes, newPI.startPt, tol, out bool bol);
+                        CorrectNode(ref nodes, newPI.endPt, tol, out bol);
+
+                        plToBc[i] = true;
+
                     }
                 }
             }
@@ -227,16 +280,16 @@ namespace Krill.Grasshopper
             
 
             // Finding the relevant local max vonMises points
-
+            
             for (int i = 0; i < pI.Count; i++)
             {
-                pI[i].locMaxPts = FindLocalMaxPtsOnCurve(pI[i].pLine, dCrvs, nCrvs);
+                pI[i].locMaxPts = FindLocalMaxPtsOnCurve(pI[i].pLine, dAreas, nAreas);
                 for (int j = 0; j < pI[i].locMaxPts.Count; j++)
                 {
                     double t = pI[i].pLine.ClosestParameter(pI[i].locMaxPts[j]);
                     Vector3d tangent = pI[i].pLine.TangentAt(t);
-                    Vector3d normal = Vector3d.CrossProduct(tangent, Vector3d.ZAxis);
-                    pI[i].normalsAtT.Add(normal);
+                    Plane normalPlane = new Plane(pI[i].pLine.PointAt(t), tangent);
+                    pI[i].normalsAtT.Add(normalPlane);
                     pI[i].tangentsAtT.Add(tangent);
                     pI[i].interTvals.Add(t);
 
@@ -258,7 +311,7 @@ namespace Krill.Grasshopper
 
                 for (int j = 0; j < noOldPI; j++)
                 {
-                    CurveIntersections crvInter = Intersection.CurveCurve(pI[j].pLineCurve, curCrv, 0.01, 0.0);
+                    CurveIntersections crvInter = Intersection.CurveCurve(pI[j].pLineCurve, curCrv, intTol, 0.0);
                     if (crvInter != null && crvInter.Count > 0)
                     {
                         IntersectionEvent intEvent = crvInter[0];
@@ -269,13 +322,13 @@ namespace Krill.Grasshopper
                             newPI.startPt = pLine[i].First;
                             newPI.endPt = CorrectNode(ref nodes, intEvent.PointA, tol, out bool bol);
 
-                            newPI.locMaxPts = FindLocalMaxPtsOnCurve(newPI.pLine, dCrvs, nCrvs);
+                            newPI.locMaxPts = FindLocalMaxPtsOnCurve(newPI.pLine, dAreas, nAreas);
                             for (int k = 0; k < newPI.locMaxPts.Count; k++)
                             {
                                 double t = newPI.pLine.ClosestParameter(newPI.locMaxPts[k]);
                                 Vector3d tangent = newPI.pLine.TangentAt(t);
-                                Vector3d normal = Vector3d.CrossProduct(tangent, Vector3d.ZAxis);
-                                newPI.normalsAtT.Add(normal);
+                                Plane normalPlane = new Plane(newPI.pLine.PointAt(t), tangent);
+                                newPI.normalsAtT.Add(normalPlane);
                                 newPI.tangentsAtT.Add(tangent);
                                 newPI.interTvals.Add(t);
 
@@ -301,23 +354,26 @@ namespace Krill.Grasshopper
                 {
                     Point3d pt = pI[i].locMaxPts[j];
 
-                    Point3d[] pts = new Point3d[4];
-                    pts[0] = pt + pI[i].normalsAtT[j] * offsetTol;
-                    pts[1] = pt - pI[i].normalsAtT[j] * offsetTol;
-                    pts[2] = pt + pI[i].tangentsAtT[j] * offsetTol;
-                    pts[3] = pt - pI[i].tangentsAtT[j] * offsetTol;
+                    Point3d[] pts = new Point3d[6];
+                    pts[0] = pt + pI[i].normalsAtT[j].XAxis * offsetTol;
+                    pts[1] = pt - pI[i].normalsAtT[j].XAxis * offsetTol;
+                    pts[2] = pt + pI[i].normalsAtT[j].YAxis * offsetTol;
+                    pts[3] = pt - pI[i].normalsAtT[j].YAxis * offsetTol;
+                    pts[4] = pt + pI[i].tangentsAtT[j] * offsetTol;
+                    pts[5] = pt - pI[i].tangentsAtT[j] * offsetTol;
 
                     for (int k = 0; k < pts.Length; k++)
                     {
                         for (int m = 0; m < startDirs.Length; m++)
                         {
-                            LoadPathCurve2d lPath = new LoadPathCurve2d(post.mask, pts[k], startDirs[m], post.princpDir, post.princpStress);
+                            LoadPathCurve lPath = new LoadPathCurve(post.mask, pts[k], startDirs[m], post.princpDir, post.princpStress);
                             lPath.ConstructLoadPath(scaleDelta);
 
                             if (lPath.loadPath.IsValid)
                             {
                                 pI[i].potIIpls.Add(lPath.loadPath);
                                 pI[i].potIIplsStartPt.Add(pt);
+                                //phaseIIcrvs.Add(lPath.loadPath);
                             }
                         }
                     }
@@ -338,7 +394,7 @@ namespace Krill.Grasshopper
                         if (k == i)
                             continue;
 
-                        CurveIntersections crvInter = Intersection.CurveCurve(pI[k].pLineCurve, currentPotIIcrv, 0.01, 0.0);
+                        CurveIntersections crvInter = Intersection.CurveCurve(pI[k].pLineCurve, currentPotIIcrv, intTol, 0.0);
                         if (crvInter != null && crvInter.Count > 0)
                         {
                             IntersectionEvent intEvent = crvInter[0];
@@ -398,13 +454,13 @@ namespace Krill.Grasshopper
                     // If it does not intersect anything but connects in a new way to a BC
                     if (!intersect)
                     {
-                        foreach (Curve dCrv in dCrvs)
+                        foreach (Mesh dArea in dAreas)
                         {
-                            if (dCrv.ClosestPoint(pI[i].potIIpls[j].Last, out double t, delta * 2))
+                            if (dArea.ClosestPoint(pI[i].potIIpls[j].Last, out Point3d ptOnMesh, delta * 2) != -1)
                             {
-                                double bcTol = dCrv.GetLength() / 2;
+                                //double bcTol = dArea.GetLength() / 2;
 
-                                Line l = new Line(currentLocMaxPt, CorrectNode(ref nodes, dCrv.PointAt(t), bcTol, out bool bol));
+                                Line l = new Line(currentLocMaxPt, CorrectNode(ref nodes, ptOnMesh, tol, out bool bol));
                                 if (!bol)
                                 {
                                     phaseIIcrvs.Add(pI[i].potIIpls[j]);
@@ -428,7 +484,7 @@ namespace Krill.Grasshopper
                         if (i == pII[k].indPI)
                             continue;
 
-                        CurveIntersections crvInter = Intersection.CurveCurve(pII[k].pLineCurve, currentIIcrv, 0.01, 0.0);
+                        CurveIntersections crvInter = Intersection.CurveCurve(pII[k].pLineCurve, currentIIcrv, intTol, 0.0);
                         if (crvInter != null && crvInter.Count > 0)
                         {
                             IntersectionEvent intEvent = crvInter[0];
@@ -472,16 +528,24 @@ namespace Krill.Grasshopper
 
             /////////////////////////////////////////////////////////////////////////////////////////
             // Phase III (handeling the beam case)
-            for (int i = 0; i < dCrvs.Count; i++)
+            for (int i = 0; i < dAreas.Count; i++)
             {
-                if (dCrvs.Count < 2)
+                if (dAreas.Count < 2)
                     break;
 
-                Point3d startPt = dCrvs[i].PointAtNormalizedLength(0.5);
+                Point3d[] vertices = dAreas[i].Vertices.ToPoint3dArray();
+                Point3d startPt = new Point3d();
+
+                for (int j = 0; j < vertices.Length; j++)
+                {
+                    startPt += vertices[j];
+                }
+
+                startPt /= vertices.Length;
 
                 for (int j = 0; j < startDirs.Length; j++)
                 {
-                    LoadPathCurve2d lPath = new LoadPathCurve2d(post.mask, startPt, startDirs[j], post.princpDir, post.princpStress);
+                    LoadPathCurve lPath = new LoadPathCurve(post.mask, startPt, startDirs[j], post.princpDir, post.princpStress);
                     lPath.ConstructLoadPath(scaleDelta);
 
                     if (lPath.loadPath.IsValid)
@@ -492,7 +556,7 @@ namespace Krill.Grasshopper
 
                         for (int ii = 0; ii < pI.Count; ii++)
                         {
-                            CurveIntersections crvInter = Intersection.CurveCurve(pI[ii].pLineCurve, potIII, tol, 0.0);
+                            CurveIntersections crvInter = Intersection.CurveCurve(pI[ii].pLineCurve, potIII, intTol, 0.0);
                             if (crvInter != null && crvInter.Count > 0)
                             {
                                 IntersectionEvent intEvent = crvInter[0];                                    
@@ -532,7 +596,7 @@ namespace Krill.Grasshopper
             public Point3d endPt;
             public List<double> interTvals;
             public List<Point3d> locMaxPts;
-            public List<Vector3d> normalsAtT;
+            public List<Plane> normalsAtT;
             public List<Vector3d> tangentsAtT;
             public List<Polyline> potIIpls;
             public List<Point3d> potIIplsStartPt;
@@ -544,7 +608,7 @@ namespace Krill.Grasshopper
                 interTvals = new List<double>();
                 locMaxPts = new List<Point3d>();
                 potIIpls = new List<Polyline>();
-                normalsAtT = new List<Vector3d>();
+                normalsAtT = new List<Plane>();
                 tangentsAtT = new List<Vector3d>();
                 potIIplsStartPt = new List<Point3d>();                
             }
@@ -591,15 +655,15 @@ namespace Krill.Grasshopper
             }
             return Curve.CreateInterpolatedCurve(pts, degree);
         }
-        private List<Point3d> FindLocalMaxPtsOnCurve(Polyline polyline, List<Curve> dCrvs, List<Curve> nCrvs)
+
+        private List<Point3d> FindLocalMaxPtsOnCurve(Polyline polyline, List<Mesh> dAreas, List<Mesh> nAreas)
         {
             List<Point3d> ptsOnCrv = new List<Point3d>();
             List<double> vonAtCurve = new List<double>();
 
             for (int i = 0; i < polyline.Count; i++)
             {
-                Point2d pos = new Point2d(polyline[i].X, polyline[i].Y);
-                vonAtCurve.Add(LERPvonMises(pos));
+                vonAtCurve.Add(LERPvonMises(polyline[i]));
             }
 
             for (int i = 0; i < 10; i++)
@@ -607,12 +671,13 @@ namespace Krill.Grasshopper
                 vonAtCurve = SmoothData(vonAtCurve, 1);
             }
 
-            int neighbour = 1;
+            double vonCutOff = vonAtCurve.Max() * 0.333;
 
-            for (int i = neighbour; i < vonAtCurve.Count - neighbour; i++)
+            for (int i = 1; i < vonAtCurve.Count - 1; i++)
             {
-                if (vonAtCurve[i] > vonAtCurve[i - neighbour] &&
-                    vonAtCurve[i] > vonAtCurve[i + neighbour])
+                if (vonAtCurve[i] > vonAtCurve[i - 1] &&
+                    vonAtCurve[i] > vonAtCurve[i + 1] &&
+                    vonAtCurve[i] > vonCutOff)
                 {
                     bool closeToBC = false;
 
@@ -620,17 +685,18 @@ namespace Krill.Grasshopper
                     if (tol < post.mask.delta * 3)
                         bcTol = post.mask.delta * 3;
 
-                    foreach (Curve dCrv in dCrvs)
+                    foreach (Mesh dArea in dAreas)
                     {
-                        if (dCrv.ClosestPoint(polyline[i], out double t, bcTol))
+                        
+                        if (dArea.ClosestPoint(polyline[i], out Point3d ptOnMesh, bcTol) != -1)
                         {
                             closeToBC = true;
                             break;
                         }
                     }
-                    foreach (Curve nCrv in nCrvs)
+                    foreach (Mesh nArea in nAreas)
                     {
-                        if (nCrv.ClosestPoint(polyline[i], out double t, bcTol))
+                        if (nArea.ClosestPoint(polyline[i], out Point3d ptOnMesh, bcTol) != -1)
                         {
                             closeToBC = true;
                             break;
@@ -639,22 +705,39 @@ namespace Krill.Grasshopper
 
                     if (!closeToBC)
                     {
-                        Point2d pos = new Point2d(polyline[i].X, polyline[i].Y);
-                        Vector2d pStress = LERPpStress(pos);
-                        double p1 = Math.Abs(pStress.X);
-                        double p2 = Math.Abs(pStress.Y);
-                        double factor = 0.1;
+                        Vector3d pStress = LERPpStress(polyline[i]);
+                        pStress.X = Math.Abs(pStress.X);
+                        pStress.Y = Math.Abs(pStress.Y);
+                        pStress.Z = Math.Abs(pStress.Z);
+                        double factor = 0.05;
 
-                        if (p1 > p2 && p2 > p1 * factor)
+                        double maxVal = pStress.MaximumCoordinate;
+
+                        if (maxVal == pStress.X)
                         {
-                            localMax.Add(polyline[i]);
-                            ptsOnCrv.Add(polyline[i]);
+                            if (pStress.Y > maxVal * factor || pStress.Z > maxVal * factor)
+                            {
+                                localMax.Add(polyline[i]);
+                                ptsOnCrv.Add(polyline[i]);
+                            }
                         }
-                            
-                        else if (p2 > p1 && p1 > p2 * factor)
+
+                        if (maxVal == pStress.Y)
                         {
-                            localMax.Add(polyline[i]);
-                            ptsOnCrv.Add(polyline[i]);
+                            if (pStress.X > maxVal * factor || pStress.Z > maxVal * factor)
+                            {
+                                localMax.Add(polyline[i]);
+                                ptsOnCrv.Add(polyline[i]);
+                            }
+                        }
+
+                        if (maxVal == pStress.Z)
+                        {
+                            if (pStress.Y > maxVal * factor || pStress.X > maxVal * factor)
+                            {
+                                localMax.Add(polyline[i]);
+                                ptsOnCrv.Add(polyline[i]);
+                            }
                         }
                     }                    
                 }                    
@@ -687,38 +770,52 @@ namespace Krill.Grasshopper
             return result;
         }
 
-        private double LERPvonMises(Point2d pos)
+        private double LERPvonMises(Point3d pos)
         {
-            Voxels2d<int> startVoxels = post.mask;
-            Voxels2d<double> vonMises = post.vonMises;
+            Voxels<int> startVoxels = post.mask;
+            Voxels<double> vonMises = post.vonMises;
 
-            pos -= new Vector2d(startVoxels.origin.X, startVoxels.origin.Y);
+            pos -= (Vector3d)startVoxels.origin;
             pos /= startVoxels.delta;
 
             double u = pos.X;
             double v = pos.Y;
+            double w = pos.Z;
 
             int i0 = (int)Math.Floor(u - 0.5);
             int j0 = (int)Math.Floor(v - 0.5);
+            int k0 = (int)Math.Floor(w - 0.5);
             int i1 = (int)Math.Floor(u - 0.5) + 1;
             int j1 = (int)Math.Floor(v - 0.5) + 1;
+            int k1 = (int)Math.Floor(w - 0.5) + 1;
 
             double a = (u - 0.5) - Math.Floor(u - 0.5);
             double b = (v - 0.5) - Math.Floor(v - 0.5);
+            double c = (w - 0.5) - Math.Floor(w - 0.5);
 
-            Coord i0j0k0 = new Coord(i0, j0);
-            Coord i1j0k0 = new Coord(i1, j0);
-            Coord i0j1k0 = new Coord(i0, j1);
-            Coord i1j1k0 = new Coord(i1, j1);
+            Coord i0j0k0 = new Coord(i0, j0, k0);
+            Coord i1j0k0 = new Coord(i1, j0, k0);
+            Coord i0j1k0 = new Coord(i0, j1, k0);
+            Coord i1j1k0 = new Coord(i1, j1, k0);
+            Coord i0j0k1 = new Coord(i0, j0, k1);
+            Coord i1j0k1 = new Coord(i1, j0, k1);
+            Coord i0j1k1 = new Coord(i0, j1, k1);
+            Coord i1j1k1 = new Coord(i1, j1, k1);
 
             int INDi0j0k0 = startVoxels.CoordToIndex(i0j0k0);
             int INDi1j0k0 = startVoxels.CoordToIndex(i1j0k0);
             int INDi0j1k0 = startVoxels.CoordToIndex(i0j1k0);
             int INDi1j1k0 = startVoxels.CoordToIndex(i1j1k0);
+            int INDi0j0k1 = startVoxels.CoordToIndex(i0j0k1);
+            int INDi1j0k1 = startVoxels.CoordToIndex(i1j0k1);
+            int INDi0j1k1 = startVoxels.CoordToIndex(i0j1k1);
+            int INDi1j1k1 = startVoxels.CoordToIndex(i1j1k1);
 
             // Very basic break-statement
-            if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0 &&
-                (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0)
+            if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j0k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k1] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k1] & maskbit) == 0)
             {
                 return 0;
             }
@@ -729,11 +826,15 @@ namespace Krill.Grasshopper
             INDs.Add(INDi1j0k0);
             INDs.Add(INDi0j1k0);
             INDs.Add(INDi1j1k0);
+            INDs.Add(INDi0j0k1);
+            INDs.Add(INDi1j0k1);
+            INDs.Add(INDi0j1k1);
+            INDs.Add(INDi1j1k1);
 
             double[] lerpVals = new double[INDs.Count];
 
             bool[] inside = new bool[INDs.Count];
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < INDs.Count; i++)
             {
                 if ((startVoxels.cellValues[INDs[i]] & maskbit) == 0)
                     inside[i] = false;
@@ -746,7 +847,8 @@ namespace Krill.Grasshopper
 
             double avgVal = 0;
             double noInside = 0;
-            if (!inside[0] || !inside[1] || !inside[2] || !inside[3])
+            if (!inside[0] || !inside[1] || !inside[2] || !inside[3] ||
+                !inside[4] || !inside[5] || !inside[6] || !inside[7])
             {
                 for (int i = 0; i < INDs.Count; i++)
                 {
@@ -768,47 +870,66 @@ namespace Krill.Grasshopper
             }
 
             // Do the LERP
-            double val = (1 - a) * (1 - b) * lerpVals[0]
-                    + a * (1 - b) * lerpVals[1]
-                    + (1 - a) * b * lerpVals[2]
-                    + a * b * lerpVals[3];
+            double val = (1 - a) * (1 - b) * (1 - c) * lerpVals[0]
+                    + a * (1 - b) * (1 - c) * lerpVals[1]
+                    + (1 - a) * b * (1 - c) * lerpVals[2]
+                    + a * b * (1 - c) * lerpVals[3]
+                    + (1 - a) * (1 - b) * c * lerpVals[4]
+                    + a * (1 - b) * c * lerpVals[5]
+                    + (1 - a) * b * c * lerpVals[6]
+                    + a * b * c * lerpVals[7];
 
             return val;
         }
-        private Vector2d LERPpStress(Point2d pos)
+        
+        private Vector3d LERPpStress(Point3d pos)
         {
-            Voxels2d<int> startVoxels = post.mask;
-            Voxels2d<Vector3d> pStress = post.princpStress;
+            Voxels<int> startVoxels = post.mask;
+            Voxels<Vector3d> pStress = post.princpStress;
 
-            pos -= new Vector2d(startVoxels.origin.X, startVoxels.origin.Y);
+            pos -= (Vector3d)startVoxels.origin;
             pos /= startVoxels.delta;
 
             double u = pos.X;
             double v = pos.Y;
+            double w = pos.Z;
 
             int i0 = (int)Math.Floor(u - 0.5);
             int j0 = (int)Math.Floor(v - 0.5);
+            int k0 = (int)Math.Floor(w - 0.5);
             int i1 = (int)Math.Floor(u - 0.5) + 1;
             int j1 = (int)Math.Floor(v - 0.5) + 1;
+            int k1 = (int)Math.Floor(w - 0.5) + 1;
 
             double a = (u - 0.5) - Math.Floor(u - 0.5);
             double b = (v - 0.5) - Math.Floor(v - 0.5);
+            double c = (w - 0.5) - Math.Floor(w - 0.5);
 
-            Coord i0j0k0 = new Coord(i0, j0);
-            Coord i1j0k0 = new Coord(i1, j0);
-            Coord i0j1k0 = new Coord(i0, j1);
-            Coord i1j1k0 = new Coord(i1, j1);
+            Coord i0j0k0 = new Coord(i0, j0, k0);
+            Coord i1j0k0 = new Coord(i1, j0, k0);
+            Coord i0j1k0 = new Coord(i0, j1, k0);
+            Coord i1j1k0 = new Coord(i1, j1, k0);
+            Coord i0j0k1 = new Coord(i0, j0, k1);
+            Coord i1j0k1 = new Coord(i1, j0, k1);
+            Coord i0j1k1 = new Coord(i0, j1, k1);
+            Coord i1j1k1 = new Coord(i1, j1, k1);
 
             int INDi0j0k0 = startVoxels.CoordToIndex(i0j0k0);
             int INDi1j0k0 = startVoxels.CoordToIndex(i1j0k0);
             int INDi0j1k0 = startVoxels.CoordToIndex(i0j1k0);
             int INDi1j1k0 = startVoxels.CoordToIndex(i1j1k0);
+            int INDi0j0k1 = startVoxels.CoordToIndex(i0j0k1);
+            int INDi1j0k1 = startVoxels.CoordToIndex(i1j0k1);
+            int INDi0j1k1 = startVoxels.CoordToIndex(i0j1k1);
+            int INDi1j1k1 = startVoxels.CoordToIndex(i1j1k1);
 
             // Very basic break-statement
-            if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0 &&
-                (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0)
+            if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j0k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k1] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k1] & maskbit) == 0)
             {
-                return Vector2d.Zero;
+                return Vector3d.Zero;
             }
 
             List<int> INDs = new List<int>();
@@ -817,11 +938,15 @@ namespace Krill.Grasshopper
             INDs.Add(INDi1j0k0);
             INDs.Add(INDi0j1k0);
             INDs.Add(INDi1j1k0);
+            INDs.Add(INDi0j0k1);
+            INDs.Add(INDi1j0k1);
+            INDs.Add(INDi0j1k1);
+            INDs.Add(INDi1j1k1);
 
-            Vector2d[] lerpVals = new Vector2d[INDs.Count];
+            Vector3d[] lerpVals = new Vector3d[INDs.Count];
 
             bool[] inside = new bool[INDs.Count];
-            for (int i = 0; i < 4; i++)
+            for (int i = 0; i < INDs.Count; i++)
             {
                 if ((startVoxels.cellValues[INDs[i]] & maskbit) == 0)
                     inside[i] = false;
@@ -830,12 +955,14 @@ namespace Krill.Grasshopper
                     inside[i] = true;
                     lerpVals[i].X = pStress.cellValues[INDs[i]].X;
                     lerpVals[i].Y = pStress.cellValues[INDs[i]].Y;
+                    lerpVals[i].Z = pStress.cellValues[INDs[i]].Z;
                 }
             }
 
-            Vector2d avgVal = new Vector2d();
+            Vector3d avgVal = new Vector3d();
             double noInside = 0;
-            if (!inside[0] || !inside[1] || !inside[2] || !inside[3])
+            if (!inside[0] || !inside[1] || !inside[2] || !inside[3] ||
+                !inside[4] || !inside[5] || !inside[6] || !inside[7])
             {
                 for (int i = 0; i < INDs.Count; i++)
                 {
@@ -844,6 +971,7 @@ namespace Krill.Grasshopper
 
                     avgVal.X += pStress.cellValues[INDs[i]].X;
                     avgVal.Y += pStress.cellValues[INDs[i]].Y;
+                    avgVal.Z += pStress.cellValues[INDs[i]].Z;
                     noInside++;
                 }
                 avgVal /= (double)noInside;
@@ -858,19 +986,50 @@ namespace Krill.Grasshopper
             }
 
             // Do the LERP
-            Vector2d val = new Vector2d();
-            val.X = (1 - a) * (1 - b) * lerpVals[0].X
-                    + a * (1 - b) * lerpVals[1].X
-                    + (1 - a) * b * lerpVals[2].X
-                    + a * b * lerpVals[3].X;
+            Vector3d val = new Vector3d();
+            val.X = (1 - a) * (1 - b) * (1 - c) * lerpVals[0].X
+                    + a * (1 - b) * (1 - c) * lerpVals[1].X
+                    + (1 - a) * b * (1 - c) * lerpVals[2].X
+                    + a * b * (1 - c) * lerpVals[3].X
+                    + (1 - a) * (1 - b) * c * lerpVals[4].X
+                    + a * (1 - b) * c * lerpVals[5].X
+                    + (1 - a) * b * c * lerpVals[6].X
+                    + a * b * c * lerpVals[7].X;
 
-            val.Y = (1 - a) * (1 - b) * lerpVals[0].Y
-                    + a * (1 - b) * lerpVals[1].Y
-                    + (1 - a) * b * lerpVals[2].Y
-                    + a * b * lerpVals[3].Y;
+            val.Y = (1 - a) * (1 - b) * (1 - c) * lerpVals[0].Y
+                    + a * (1 - b) * (1 - c) * lerpVals[1].Y
+                    + (1 - a) * b * (1 - c) * lerpVals[2].Y
+                    + a * b * (1 - c) * lerpVals[3].Y
+                    + (1 - a) * (1 - b) * c * lerpVals[4].Y
+                    + a * (1 - b) * c * lerpVals[5].Y
+                    + (1 - a) * b * c * lerpVals[6].Y
+                    + a * b * c * lerpVals[7].Y;
+
+            val.Z = (1 - a) * (1 - b) * (1 - c) * lerpVals[0].Z
+                    + a * (1 - b) * (1 - c) * lerpVals[1].Z
+                    + (1 - a) * b * (1 - c) * lerpVals[2].Z
+                    + a * b * (1 - c) * lerpVals[3].Z
+                    + (1 - a) * (1 - b) * c * lerpVals[4].Z
+                    + a * (1 - b) * c * lerpVals[5].Z
+                    + (1 - a) * b * c * lerpVals[6].Z
+                    + a * b * c * lerpVals[7].Z;
 
             return val;
         }
+
+        private static Polyline CutPolyline(Polyline polyline, double t)
+        {
+            List<Point3d> pts = new List<Point3d>();
+            for (int i = 0; i < t; i++)
+            {
+                pts.Add(polyline[i]);
+            }
+
+            Polyline cutPl = new Polyline(pts);
+            return cutPl;
+        }
+       
+        // Old method, not used anymore
         private void FindLocalMaxPts(double factorOfMaxStress, double horizon, Voxels2d<double> vonMises, List<Curve> dCrvs, List<Curve> nCrvs, Voxels2d<Vector3d> principalStress)
         {
             double minLocalMaxStress = vonMises.cellValues.Max() * factorOfMaxStress;   // godtyckligt vald faktor
@@ -957,17 +1116,17 @@ namespace Krill.Grasshopper
             }
         }
 
-        public override WorkerInstance Duplicate() => new PSLWorker2d();
+        public override WorkerInstance Duplicate() => new PSLWorker();
 
         public override void GetData(IGH_DataAccess DA, GH_ComponentParamServer Params)
         {
-            Param.PostProcessingResults2dGoo res = null;
+            Param.PostProcessingResultsGoo res = null;
             DA.GetData(0, ref res);
             if (res is null)
                 return;
             post = res.Value;
 
-            var bcs = new List<Param.BoundaryCondition2dGoo>();
+            var bcs = new List<Param.BoundaryConditionGoo>();
             DA.GetDataList(1, bcs);
             if (!(bcs is null))
                 this.BCs = bcs.Select(x => x.Value).ToList();
@@ -987,6 +1146,10 @@ namespace Krill.Grasshopper
             double offsetTol = new double();
             DA.GetData(5, ref offsetTol);
             this.offsetTol = offsetTol;
+
+            double intTol = new double();
+            DA.GetData(6, ref intTol);
+            this.intTol = intTol;
         }
 
         public override void SetData(IGH_DataAccess DA)
