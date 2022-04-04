@@ -23,6 +23,8 @@ namespace Krill
         private int[] nListForN;
         double nListRadius = 3.1;
 
+        double stressCutOffLim;
+
         public LoadPathCurve2d(Voxels2d<int> startVoxels, Point3d startPt, Vector3d startVec,
                                 Voxels2d<Vector3d[]> princpDir, Voxels2d<Vector3d> princpStress)
         {
@@ -36,7 +38,22 @@ namespace Krill
 
             normals = new Voxels2d<Vector3d>(startVoxels.origin, d, startVoxels.n);
             
-            nListForN = Utility.GetNeighbourOffsets2d(startVoxels.n, nListRadius);  
+            nListForN = Utility.GetNeighbourOffsets2d(startVoxels.n, nListRadius);
+
+            double maxPstress = double.MinValue;
+            for (int i = 0; i < startVoxels.n * startVoxels.n; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+                for (int j = 0; j < 2; j++)
+                {
+                    double curVal = Math.Abs(princpStress.cellValues[i][j]);
+                    if (curVal > maxPstress)
+                        maxPstress = curVal;
+                }
+            }
+
+            stressCutOffLim = maxPstress / 500.0;
         }
 
         public void ConstructLoadPath(double scaleStep)
@@ -85,6 +102,11 @@ namespace Krill
                 moveVec = aveDf;
 
                 x1 = x0 + step * moveVec;
+
+                // If the stress at p-stress at point x1 is too low, break
+                double pStress = Math.Abs(LerpPstress(x1, moveVec));
+                if (pStress < stressCutOffLim)
+                    break;
 
                 //int newSign = Math.Sign(LerpPstress(x1, moveVec));
 
@@ -177,7 +199,6 @@ namespace Krill
         {
             Vector2d dir = new Vector2d();
             basicEnd = false;
-            Point3d currentPt = new Point3d(pos.X, pos.Y, 0);
             pos -= new Vector2d(startVoxels.origin.X, startVoxels.origin.Y);
             pos /= d;
 
@@ -366,12 +387,56 @@ namespace Krill
             int INDi0j1k0 = startVoxels.CoordToIndex(i0j1k0);
             int INDi1j1k0 = startVoxels.CoordToIndex(i1j1k0);
 
+            List<int> INDs = new List<int>();
+
+            INDs.Add(INDi0j0k0);
+            INDs.Add(INDi1j0k0);
+            INDs.Add(INDi0j1k0);
+            INDs.Add(INDi1j1k0);
+
+            double[] valLERP = new double[INDs.Count];
+
+            bool[] inside = new bool[INDs.Count];
+            for (int i = 0; i < 4; i++)
+            {
+                if ((startVoxels.cellValues[INDs[i]] & maskbit) == 0)
+                    inside[i] = false;
+                else
+                {
+                    inside[i] = true;
+                    valLERP[i] = CorrectPrincpStress(INDs[i], previousDir);
+                }
+            }
+
+            double avgVal = 0;
+            double noInside = 0;
+            if (!inside[0] || !inside[1] || !inside[2] || !inside[3])
+            {
+                for (int i = 0; i < INDs.Count; i++)
+                {
+                    if (!inside[i])
+                        continue;
+
+                    avgVal += CorrectPrincpStress(INDs[i], previousDir);
+                    noInside++;
+                }
+                avgVal /= (double)noInside;
+            }
+
+            for (int i = 0; i < INDs.Count; i++)
+            {
+                if (inside[i])
+                    continue;
+
+                valLERP[i] = avgVal;
+            }
+
             double pStress;
 
-            pStress = (1 - a) * (1 - b) * CorrectPrincpStress(INDi0j0k0, previousDir)
-                      + a * (1 - b) * CorrectPrincpStress(INDi1j0k0, previousDir)
-                      + (1 - a) * b * CorrectPrincpStress(INDi0j1k0, previousDir)
-                      + a * b * CorrectPrincpStress(INDi1j1k0, previousDir);
+            pStress = (1 - a) * (1 - b) * valLERP[0]
+                      + a * (1 - b) * valLERP[1]
+                      + (1 - a) * b * valLERP[2]
+                      + a * b * valLERP[3];
 
             return pStress;
         }
@@ -379,26 +444,26 @@ namespace Krill
         private double CorrectPrincpStress(int indVoxel, Vector2d prevDir)
         {
             Vector3d[] pDir = new Vector3d[6];
-            double[] angle = new double[6];
+            double[] cos = new double[6];
             double[] pStress = new double[6];
-            double minAng = double.MaxValue;
-            int minInd = 0;
+            double maxCos = double.MinValue;
+            int maxInd = -1;
 
             Vector3d prevDir3d = new Vector3d(prevDir.X, prevDir.Y, 0);
 
             // Kolla närmare på vad som händer längst med en kant
-            if ((startVoxels.cellValues[indVoxel] & maskbit) == 0)
-            {
-                return 0;
-            }
+            //if ((startVoxels.cellValues[indVoxel] & maskbit) == 0)
+            //{
+            //    return 0;
+            //}
 
             for (int k = 0; k < 3; k++)
             {
                 pDir[k] = princpDir.cellValues[indVoxel][k];
                 pDir[k + 3] = -pDir[k];
 
-                angle[k] = Vector3d.VectorAngle(prevDir3d, pDir[k]);
-                angle[k + 3] = Vector3d.VectorAngle(prevDir3d, pDir[k + 3]);
+                cos[k] = (prevDir3d * pDir[k]);
+                cos[k + 3] = -cos[k];
 
                 pStress[k] = princpStress.cellValues[indVoxel][k];
                 pStress[k + 3] = pStress[k];
@@ -406,14 +471,14 @@ namespace Krill
 
             for (int k = 0; k < 6; k++)
             {
-                if (angle[k] < minAng)
+                if (cos[k] > maxCos)
                 {
-                    minAng = angle[k];
-                    minInd = k;
+                    maxCos = cos[k];
+                    maxInd = k;
                 }
             }
 
-            return pStress[minInd];
+            return pStress[maxInd];
         }
     }
 }
