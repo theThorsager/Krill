@@ -65,22 +65,20 @@ namespace Krill.Grasshopper
 
             var ortho = new OrthonogalityTruss();
 
-            ortho.nodes = truss.Value.Nodes.ToList();
-            ortho.connections = truss.Value.Connections.ToList();
-            ortho.gradients = truss.Value.Nodes.Select(x => new Vector3d()).ToList();
+            ortho.Init(truss.Value);
 
-
-            var locked = new bool[ortho.nodes.Count];
+            var locked = new bool[ortho.xs.Length];
             var indecies = truss.Value.Connections.SelectMany(x => new int[] { x.Item1, x.Item2 }).ToList();
-            for (int i = 0; i < ortho.nodes.Count; i++)
+            for (int i = 0; i < ortho.xs.Length / 3; i++)
             {
                 if (indecies.Count(x => x == i) == 1)
                 {
-                    locked[i] = true;
+                    locked[i*3] = true;
+                    locked[i*3+1] = true;
+                    locked[i*3+2] = true;
                 }
             }
             ortho.LockDOFs(locked.ToList());
-
 
             double result = 0.0;
             for (int i = 0; i < n; i++)
@@ -90,27 +88,22 @@ namespace Krill.Grasshopper
                 ortho.ApplyGradient(a);
             }
 
-            //var displac = energyTruss.us;
-
-            //var grad = new List<Vector3d>();
-            //var disp = new List<Vector3d>();
-            //var pts = new List<Point3d>();
-            //for (int i = 0; i < energyTruss.nVariables / 3; i++)
-            //{
-            //    grad.Add(new Vector3d(gradient[i * 3], gradient[i * 3 + 1], gradient[i * 3 + 2]));
-            //    disp.Add(new Vector3d(displac[i * 3], displac[i * 3 + 1], displac[i * 3 + 2]));
-            //    pts.Add(new Point3d(energyTruss.xs[i * 3], energyTruss.xs[i * 3 + 1], energyTruss.xs[i * 3 + 2]));
-            //}
-
-            var lines = new List<Line>();
-            for (int i = 0; i < ortho.connections.Count; i++)
+            var grad = new List<Vector3d>();
+            var pts = new List<Point3d>();
+            for (int i = 0; i < ortho.xs.Length / 3; i++)
             {
-                lines.Add(new Line(ortho.nodes[ortho.connections[i].Item1], ortho.nodes[ortho.connections[i].Item2]));
+                grad.Add(new Vector3d(ortho.dxs[i * 3], ortho.dxs[i * 3 + 1], ortho.dxs[i * 3 + 2]));
+                pts.Add(new Point3d(ortho.xs[i * 3], ortho.xs[i * 3 + 1], ortho.xs[i * 3 + 2]));
             }
 
-            //DA.SetData(0, Math.Log(result + f * f));
+            var lines = new List<Line>();
+            for (int i = 0; i < ortho.connections.Length; i++)
+            {
+                lines.Add(new Line(pts[truss.Value.Connections[i].Item1], pts[truss.Value.Connections[i].Item2]));
+            }
+
             DA.SetData(0, result);
-            DA.SetDataList(1, ortho.gradients);
+            DA.SetDataList(1, grad);
             //DA.SetDataList(2, disp);
             //DA.SetDataList(3, energyTruss.eps);
             DA.SetDataList(4, lines);

@@ -5,15 +5,26 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
+using CSparse;
+using CSparse.Double;
+
 namespace Krill
 {
     internal class OrthonogalityTruss
     {
-        public List<Point3d> nodes = new List<Point3d>();
-        public List<Vector3d> gradients = new List<Vector3d>();
-        public List<Tuple<int, int>> connections = new List<Tuple<int, int>>();
+        public double[] xs = null;
+        public double[] dxs = null;
+        public Tuple<int, int>[] connections = null;
 
         public List<bool> lockedDOF = new List<bool>();
+
+        public void Init(Containers.TrussGeometry truss)
+        {
+            xs = truss.Nodes.SelectMany(x => new double[] { x.X, x.Y, x.Z }).ToArray();
+            connections = truss.Connections.ToArray();
+
+            dxs = new double[xs.Length];
+        }
 
         public void LockDOFs(List<bool> locked)
         {
@@ -23,7 +34,7 @@ namespace Krill
         public double EvaluateTruss(double cutoff)
         {
             double sum = 0;
-            for (int i = 0; i < connections.Count; i++)
+            for (int i = 0; i < connections.Length; i++)
             {
                 sum += EvaluateElement(i, cutoff);
             }
@@ -32,11 +43,8 @@ namespace Krill
 
         public void SetGradients(double cutoff)
         {
-            for (int i = 0; i < gradients.Count; i++)
-            {
-                gradients[i] = new Vector3d();
-            }
-            for (int i = 0; i < connections.Count; i++)
+            Vector.Clear(dxs);
+            for (int i = 0; i < connections.Length; i++)
             {
                 SetGradients(i, cutoff);
             }
@@ -44,94 +52,100 @@ namespace Krill
 
         public void ApplyGradient(double factor = 1)
         {
-            for (int i = 0; i < nodes.Count; i++)
-            {
-                if (!lockedDOF[i])
-                    nodes[i] += gradients[i] * factor;
-            }
+            Vector.Add(xs.Length, factor, dxs, xs, xs);
         }
 
         double EvaluateElement(int eIndex, double cutoff)
         {
-            var a = nodes[connections[eIndex].Item1];
-            var b = nodes[connections[eIndex].Item2];
+            var i = connections[eIndex].Item1 * 3;
+            var j = connections[eIndex].Item2 * 3;
 
-            var vec = b - a;
-            double norm = vec.SquareLength;
+            double x = xs[j] - xs[i];
+            double y = xs[j+1] - xs[i+1];
+            double z = xs[j+2] - xs[i+2];
+            double norm = x * x + y * y + z * z;
             double l = Math.Sqrt(norm);
 
-            if (Math.Abs(vec.X) > Math.Abs(vec.Y) && Math.Abs(vec.X) > Math.Abs(vec.Z))
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
             {
-                vec.X = 0;
+                x = 0;
             }
-            else if (Math.Abs(vec.Y) > Math.Abs(vec.Z))
+            else if (Math.Abs(y) > Math.Abs(z))
             {
-                vec.Y = 0;
+                y = 0;
             }
             else
             {
-                vec.Z = 0;
+                z = 0;
             }
 
-            return Math.Min(cutoff * cutoff * 0.4, vec.SquareLength / (norm));
+            return Math.Min(cutoff * cutoff * 0.4, (x * x + y * y + z * z) / norm);
         }
         void SetGradients(int eIndex, double f)
         {
-            int i = connections[eIndex].Item1;
-            int j = connections[eIndex].Item2;
-            var a = nodes[i];
-            var b = nodes[j];
+            var i = connections[eIndex].Item1 * 3;
+            var j = connections[eIndex].Item2 * 3;
 
-            var vec = b - a;
-            double norm = vec.SquareLength;
+            double x = xs[j] - xs[i];
+            double y = xs[j + 1] - xs[i + 1];
+            double z = xs[j + 2] - xs[i + 2];
+            double norm = x * x + y * y + z * z;
             double l = Math.Sqrt(norm);
             double sqnorm = 1 / (norm * l);
-            Vector3d res = new Vector3d();
-            if (Math.Abs(vec.X) > Math.Abs(vec.Y) && Math.Abs(vec.X) > Math.Abs(vec.Z))
+            double rx = 0;
+            double ry = 0;
+            double rz = 0;
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
             {
-                res.X = -2 * vec.X * (vec.Y * vec.Y + vec.Z * vec.Z) * sqnorm;
-                res.Y = 2 * vec.X * vec.X * vec.Y * sqnorm;
-                res.Z = 2 * vec.X * vec.X * vec.Z * sqnorm;
+                rx = -2 * x * (y * y + z * z) * sqnorm;
+                ry = 2 * x * x * y * sqnorm;
+                rz = 2 * x * x * z * sqnorm;
             }
-            else if (Math.Abs(vec.Y) > Math.Abs(vec.Z))
+            else if (Math.Abs(y) > Math.Abs(z))
             {
-                res.X = 2 * vec.Y * vec.Y * vec.X * sqnorm;
-                res.Y = -2 * vec.Y * (vec.X * vec.X + vec.Z * vec.Z) * sqnorm;
-                res.Z = 2 * vec.Y * vec.Y * vec.Z * sqnorm;
+                rx = 2 * y * y * x * sqnorm;
+                ry = -2 * y * (x * x + z * z) * sqnorm;
+                rz = 2 * y * y * z * sqnorm;
             }
             else
             {
-                res.X = 2 * vec.Z * vec.Z * vec.X * sqnorm;
-                res.Y = 2 * vec.Z * vec.Z * vec.Y * sqnorm;
-                res.Z = -2 * vec.Z * (vec.X * vec.X + vec.Y * vec.Y) * sqnorm;
+                rx = 2 * z * z * x * sqnorm;
+                ry = 2 * z * z * y * sqnorm;
+                rz = -2 * z * (x * x + y * y) * sqnorm;
             }
-            res = SmoothConstrain(res, f) / (l * 2);
-            gradients[i] += res;
-            gradients[j] -= res;
+            SmoothConstrain(ref rx, ref ry, ref rz, f);
+            dxs[i] += rx / (l * 2);
+            dxs[i+1] += ry / (l * 2);
+            dxs[i+2] += rz / (l * 2);
+            dxs[j] -= rx / (l * 2);
+            dxs[j+1] -= ry / (l * 2);
+            dxs[j+2] -= rz / (l * 2);
         }
-        Vector3d SmoothConstrain(Vector3d v, double f)
+        void SmoothConstrain(ref double x, ref double y, ref double z, double f)
         {
             const double lower = 0.01;
             const double fade = 0.15;
+            double sqL = x * x + y * y + z * z;
             double lf = f - fade;
             double uf = f + fade;
-            if (v.SquareLength < lf * lf)
+            if (sqL < lf * lf)
             {
-                return v;
             }
-            else if (v.SquareLength < uf * uf)
+            else if (sqL < uf * uf)
             {
-                double l = v.Length;
+                double l = Math.Sqrt(sqL);
                 double t = (l - lf) / (2 * fade);
                 double newLength = (t * lower + (1 - t) * (f - fade));
-                v *= newLength / l;
-                return v;
+                x *= newLength / l;
+                y *= newLength / l;
+                z *= newLength / l;
             }
             else
             {
-                v.Unitize();
-                v *= lower;
-                return v;
+                double l = Math.Sqrt(sqL);
+                x *= lower / l;
+                y *= lower / l;
+                z *= lower / l;
             }
         }
     }
