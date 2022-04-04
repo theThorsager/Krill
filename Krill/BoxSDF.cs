@@ -611,7 +611,7 @@ namespace Krill
                     + a * b * c * vecs[7];
         }
 
-        public Vector3d BoxGradientAt(Point3d pt, double cover)
+        public Vector3d BoxGradientAt(Point3d pt, double cover, double gamma)
         {
             // Ignores second order effects i.e. dF.x/dy
 
@@ -718,7 +718,10 @@ namespace Krill
                     + (1 - a) * b * vecs[6].Z
                     + a * b * vecs[7].Z;
 
-            return new Vector3d(dx, dy, dz);
+            return new Vector3d(
+                Math.Sign(dx) * (cover - value.X * 0.5) * 2 * gamma,
+                Math.Sign(dy) * (cover - value.Y * 0.5) * 2 * gamma,
+                Math.Sign(dz) * (cover - value.Z * 0.5) * 2 * gamma);
         }
 
     }

@@ -22,6 +22,8 @@ namespace Krill
 
         public double cover = 0.0;
 
+        public double gamma = 1.0;
+
         public void Init(Containers.TrussGeometry truss, BoxSDF SDF, double cover)
         {
             this.SDF = SDF;
@@ -74,14 +76,18 @@ namespace Krill
 
             var box = SDF.BoxValueAt(pt);
 
-            return Math.Max(0, cover - box.MinimumCoordinate * 0.5);
+            double resX = lockedDOF[nIndex] ? 0 : Math.Max(0, cover - box.X * 0.5);
+            double resY = lockedDOF[nIndex+1] ? 0 : Math.Max(0, cover - box.Y * 0.5);
+            double resZ = lockedDOF[nIndex+2] ? 0 : Math.Max(0, cover - box.Z * 0.5);
+            double res = Math.Max(Math.Max(resX, resY), resZ);
+            return res * res * gamma;
         }
 
         void SetGradients(int nIndex)
         {
             var pt = new Point3d(xs[nIndex], xs[nIndex + 1], xs[nIndex + 2]);
 
-            var grad = SDF.BoxGradientAt(pt, cover);
+            var grad = SDF.BoxGradientAt(pt, cover, gamma);
 
             dxs[nIndex] += lockedDOF[nIndex] ? 0 : grad.X;
             dxs[nIndex+1] += lockedDOF[nIndex+1] ? 0 : grad.Y;

@@ -67,6 +67,9 @@ namespace Krill.Grasshopper
             if (truss?.Value is null)
                 return;
 
+            if (linModel?.Value is null)
+                return;
+
             var sdfTruss = new SDFTruss();
             var SDF = new BoxSDF(linModel.Value.mask);
             SDF.ConstructSDF3();
