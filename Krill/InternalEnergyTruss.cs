@@ -252,31 +252,21 @@ namespace Krill
         private double[] Ddisplacments(int dindex)
         {
             // Compute derivative of stiffness matrix
-            var dKcoord = new CoordinateStorage<double>(nVariables - nlockedDOF, nVariables - nlockedDOF, 6 * 6 * nElements);
-            var dKcoords = new CoordinateStorage<double>(nlockedDOF, nVariables - nlockedDOF, 6 * 6 * nElements);
-
-            // All of these coordinate storage are filled in at the same indecies
-            // There is bound to be some efficiencies to be saved there
-
+            double[] res = new double[nVariables];
             for (int i = 0; i < nElements; i++)
-                Assemble(dKcoord, dKcoords, DElementStiffness(dindex, i), i);
-
-            SparseMatrix dK = (SparseMatrix)SparseMatrix.OfIndexed(dKcoord);
-
-            double[] usa = new double[nlockedDOF];
-            double[] usb = new double[nVariables - nlockedDOF];
-            Split(us, usb, usa);
-
-            // Multiply with displacements
-            double[] temp = new double[nVariables - nlockedDOF];
-            dK.Multiply(usb, temp);
+                if (ElementConnectsToVariable(i, dindex))
+                    ImplicitAssembleMultiply(DElementStiffness(dindex, i), i, us, res);
 
             // Solve with precomputed LDL decomposition
-            double[] res = new double[nVariables - nlockedDOF];
-            LDL.Solve(temp, res);
+            double[] usa = new double[nlockedDOF];
+            double[] usb = new double[nVariables - nlockedDOF];
+            Split(res, usb, usa);
+
+            double[] res1 = new double[nVariables - nlockedDOF];
+            LDL.Solve(usb, res);
 
             double[] res2 = new double[nVariables];
-            Merge(res, new double[nlockedDOF], res2);
+            Merge(res1, new double[nlockedDOF], res2);
             return res2;
         }
         private void Split<T>(T[] input, T[] a, T[] b)
@@ -318,7 +308,22 @@ namespace Krill
             for (int i = 0; i < A.ColumnCount; i++)
                 A.At(i, i, k);
         }
+        private void ImplicitAssembleMultiply(DenseMatrix Ae, int eIndex, double[] u, double[] res)
+        {
+            int ix = connections[eIndex].Item1 * 3;
+            int jx = connections[eIndex].Item2 * 3;
 
+            for (int i = 0; i < 3; i++)
+            {
+                for (int j = 0; j < 3; j++)
+                {
+                    res[ix + i] += Ae[i, j] * u[ix + j];
+                    res[ix + i] += Ae[i, j + 3] * u[jx + j];
+                    res[jx + i] += Ae[i + 3, j] * u[ix + j];
+                    res[jx + i] += Ae[i + 3, j + 3] * u[jx + j];
+                }
+            }
+        }
         private void Assemble(CoordinateStorage<double> A, CoordinateStorage<double> As, DenseMatrix Ae, int elementIndex)
         {
             int ix = ailising[connections[elementIndex].Item1 * 3];
@@ -563,6 +568,14 @@ namespace Krill
                 return diff / ls[i];
             }
             return 0.0;
+        }
+
+        private bool ElementConnectsToVariable(int eIndex, int vIndex)
+        {
+            int i = connections[eIndex].Item1 * 3;
+            int j = connections[eIndex].Item2 * 3;
+
+            return Math.Abs(vIndex - i + 1) <= 1 || Math.Abs(vIndex - j + 1) <= 1;
         }
     }
 }
