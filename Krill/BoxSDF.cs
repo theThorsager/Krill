@@ -610,5 +610,116 @@ namespace Krill
                     + (1 - a) * b * c * vecs[6]
                     + a * b * c * vecs[7];
         }
+
+        public Vector3d BoxGradientAt(Point3d pt, double cover)
+        {
+            // Ignores second order effects i.e. dF.x/dy
+
+            // Use lower bound and that the gradient is +-2
+            cover *= 2;
+            pt -= (Vector3d)SDF.origin;
+            pt /= SDF.delta;
+
+            double u = pt.X;
+            double v = pt.Y;
+            double w = pt.Z;
+
+            int i0 = (int)Math.Floor(u - 0.5);
+            int j0 = (int)Math.Floor(v - 0.5);
+            int k0 = (int)Math.Floor(w - 0.5);
+            int i1 = i0 + 1;
+            int j1 = j0 + 1;
+            int k1 = k0 + 1;
+
+            double a = (u - 0.5) - Math.Floor(u - 0.5);
+            double b = (v - 0.5) - Math.Floor(v - 0.5);
+            double c = (w - 0.5) - Math.Floor(w - 0.5);
+
+            int INDi0j0k0 = SDF.ToLinearIndex(i0, j0, k0);
+            int INDi1j0k0 = SDF.ToLinearIndex(i1, j0, k0);
+            int INDi0j1k0 = SDF.ToLinearIndex(i0, j1, k0);
+            int INDi1j1k0 = SDF.ToLinearIndex(i1, j1, k0);
+            int INDi0j0k1 = SDF.ToLinearIndex(i0, j0, k1);
+            int INDi1j0k1 = SDF.ToLinearIndex(i1, j0, k1);
+            int INDi0j1k1 = SDF.ToLinearIndex(i0, j1, k1);
+            int INDi1j1k1 = SDF.ToLinearIndex(i1, j1, k1);
+
+            var vecs = new List<Vector3d>()
+            {
+                SDF.cellValues[INDi0j0k0],
+                SDF.cellValues[INDi1j0k0],
+                SDF.cellValues[INDi0j1k0],
+                SDF.cellValues[INDi1j1k0],
+                SDF.cellValues[INDi0j0k1],
+                SDF.cellValues[INDi1j0k1],
+                SDF.cellValues[INDi0j1k1],
+                SDF.cellValues[INDi1j1k1]
+            };
+
+            double minX = double.MaxValue;
+            double minY = double.MaxValue;
+            double minZ = double.MaxValue;
+
+            for (int i = 0; i < 8; i++)
+            {
+                minX = minX < vecs[i].X ? minX : vecs[i].X == -SDF.delta ? minX : vecs[i].X;
+                minY = minY < vecs[i].Y ? minY : vecs[i].Y == -SDF.delta ? minY : vecs[i].Y;
+                minZ = minZ < vecs[i].Z ? minZ : vecs[i].Z == -SDF.delta ? minZ : vecs[i].Z;
+            }
+
+            double maxX = minX + 2 * SDF.delta;
+            double maxY = minY + 2 * SDF.delta;
+            double maxZ = minZ + 2 * SDF.delta;
+
+            for (int i = 0; i < 8; i++)
+            {
+                var vec = vecs[i];
+                vec.X = maxX < vec.X ? maxX : vec.X;
+                vec.Y = maxY < vec.Y ? maxY : vec.Y;
+                vec.Z = maxZ < vec.Z ? maxZ : vec.Z;
+                vecs[i] = vec;
+            }
+            var value = (1 - a) * (1 - b) * (1 - c) * vecs[0]
+                    + a * (1 - b) * (1 - c) * vecs[1]
+                    + (1 - a) * b * (1 - c) * vecs[2]
+                    + a * b * (1 - c) * vecs[3]
+                    + (1 - a) * (1 - b) * c * vecs[4]
+                    + a * (1 - b) * c * vecs[5]
+                    + (1 - a) * b * c * vecs[6]
+                    + a * b * c * vecs[7];
+        
+            double dx = value.X > cover ? 0.0 :
+                - (1 - b) * (1 - c) * vecs[0].X
+                    + (1 - b) * (1 - c) * vecs[1].X
+                    - b * (1 - c) * vecs[2].X
+                    + b * (1 - c) * vecs[3].X
+                    - (1 - b) * c * vecs[4].X
+                    + (1 - b) * c * vecs[5].X
+                    - b * c * vecs[6].X
+                    + b * c * vecs[7].X;
+
+            double dy = value.Y > cover ? 0.0 :
+                 -(1 - a) * (1 - c) * vecs[0].Y
+                    - a * (1 - c) * vecs[1].Y
+                    + (1 - a) * (1 - c) * vecs[2].Y
+                    + a * (1 - c) * vecs[3].Y
+                    - (1 - a) * c * vecs[4].Y
+                    - a * c * vecs[5].Y
+                    + (1 - a) * c * vecs[6].Y
+                    + a * c * vecs[7].Y;
+
+            double dz = value.Z > cover ? 0.0 :
+                -(1 - a) * (1 - b) * vecs[0].Z
+                    - a * (1 - b) * vecs[1].Z
+                    - (1 - a) * b * vecs[2].Z
+                    - a * b * vecs[3].Z
+                    + (1 - a) * (1 - b) * c * vecs[4].Z
+                    + a * (1 - b) * vecs[5].Z
+                    + (1 - a) * b * vecs[6].Z
+                    + a * b * vecs[7].Z;
+
+            return new Vector3d(dx, dy, dz);
+        }
+
     }
 }
