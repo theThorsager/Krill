@@ -114,12 +114,12 @@ namespace Krill
                 rz = -2 * z * (x * x + y * y) * sqnorm;
             }
             SmoothConstrain(ref rx, ref ry, ref rz, f);
-            dxs[i] += rx / (l * 2);
-            dxs[i+1] += ry / (l * 2);
-            dxs[i+2] += rz / (l * 2);
-            dxs[j] -= rx / (l * 2);
-            dxs[j+1] -= ry / (l * 2);
-            dxs[j+2] -= rz / (l * 2);
+            dxs[i] += lockedDOF[i] ? 0 : rx / (l * 2);
+            dxs[i+1] += lockedDOF[i+1] ? 0 : ry / (l * 2);
+            dxs[i+2] += lockedDOF[i+2] ? 0 : rz / (l * 2);
+            dxs[j] -= lockedDOF[j] ? 0 : rx / (l * 2);
+            dxs[j+1] -= lockedDOF[j+1] ? 0 : ry / (l * 2);
+            dxs[j+2] -= lockedDOF[j+2] ? 0 : rz / (l * 2);
         }
         void SmoothConstrain(ref double x, ref double y, ref double z, double f)
         {
