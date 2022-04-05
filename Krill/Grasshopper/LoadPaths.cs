@@ -129,7 +129,7 @@ namespace Krill.Grasshopper
 
                 LoadPathCurve lPath = new LoadPathCurve(startVoxels, startPoints[i], startVectors[i], princpDirections, post.princpStress);
 
-                lPath.ConstructLoadPath(scaleDelta);
+                lPath.ConstructLoadPath(scaleDelta, false);
                 pLine.Add(lPath.loadPath);
             }
             ReportProgress(Id, 1);

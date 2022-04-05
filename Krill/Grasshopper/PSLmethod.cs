@@ -152,8 +152,8 @@ namespace Krill.Grasshopper
 
             foreach (IBoundaryCondition bc in BCs)
             {
-                if (bc is BoundaryConditionDirechlet bcD)                
-                    dAreas.Add(bcD.area);
+                if (bc is BoundaryConditionDirechlet bcD)
+                    dAreas.Add(bcD.area);                        
                 else if (bc is BoundaryConditionNuemann bcN)
                     nAreas.Add(bcN.area);
             }
@@ -168,7 +168,7 @@ namespace Krill.Grasshopper
                 for (int j = 0; j < startDirs.Length; j++)
                 {
                     LoadPathCurve lPath = new LoadPathCurve(post.mask, startPoints[i], startDirs[j], post.princpDir, post.princpStress);
-                    lPath.ConstructLoadPath(scaleDelta);
+                    lPath.ConstructLoadPath(scaleDelta, false);
                     if (lPath.loadPath.IsValid)
                         pLine.Add(lPath.loadPath);
                 }                
@@ -206,13 +206,15 @@ namespace Krill.Grasshopper
                 List<double> closeTvals = new List<double>();
                 List<int> jVals = new List<int>();
 
+                double startTol = delta;
+
                 for (int j = 0; j < startPoints.Count; j++)
                 {
                     
                     double t = pLine[i].ClosestParameter(startPoints[j]);
                     Point3d pt = pLine[i].PointAt(t);
 
-                    if (pt.DistanceToSquared(startPoints[j]) < tol * tol && pt.DistanceToSquared(pLine[i].First) > tol * tol)
+                    if (pt.DistanceToSquared(startPoints[j]) < startTol * startTol && pt.DistanceToSquared(pLine[i].First) > startTol * startTol)
                     {
                         closeTvals.Add(t);
                         jVals.Add(j);
@@ -254,8 +256,8 @@ namespace Krill.Grasshopper
 
                     for (int k = 0; k < pI.Count; k++)
                     {
-                        if ((pI[k].startPt.DistanceToSquared(newPI.startPt) < tol*tol && pI[k].endPt.DistanceToSquared(newPI.endPt) < tol*tol) ||
-                            (pI[k].startPt.DistanceToSquared(newPI.endPt) < tol * tol && pI[k].endPt.DistanceToSquared(newPI.startPt) < tol * tol))
+                        if ((pI[k].startPt.DistanceToSquared(newPI.startPt) < startTol * startTol && pI[k].endPt.DistanceToSquared(newPI.endPt) < startTol * startTol) ||
+                            (pI[k].startPt.DistanceToSquared(newPI.endPt) < startTol * startTol && pI[k].endPt.DistanceToSquared(newPI.startPt) < startTol * startTol))
                         {
                             add = false;
                             break;
@@ -367,7 +369,7 @@ namespace Krill.Grasshopper
                         for (int m = 0; m < startDirs.Length; m++)
                         {
                             LoadPathCurve lPath = new LoadPathCurve(post.mask, pts[k], startDirs[m], post.princpDir, post.princpStress);
-                            lPath.ConstructLoadPath(scaleDelta);
+                            lPath.ConstructLoadPath(scaleDelta, true);
 
                             if (lPath.loadPath.IsValid)
                             {
@@ -543,35 +545,69 @@ namespace Krill.Grasshopper
 
                 startPt /= vertices.Length;
 
-                for (int j = 0; j < startDirs.Length; j++)
+                Vector3d avgNormal = new Vector3d();
+
+                if (dAreas[i].FaceNormals.ComputeFaceNormals())
                 {
-                    LoadPathCurve lPath = new LoadPathCurve(post.mask, startPt, startDirs[j], post.princpDir, post.princpStress);
-                    lPath.ConstructLoadPath(scaleDelta);
+                    for (int j = 0; j < dAreas[i].FaceNormals.Count; j++)
+                    {
+                        Vector3f mVec = dAreas[i].FaceNormals[j];
+                        Vector3d vec = new Vector3d(mVec.X, mVec.Y, mVec.Z);
+                        vec.Unitize();
+                        avgNormal += vec;
+                    }
+                }
+
+                avgNormal.Unitize();
+
+                startPt -= avgNormal * offsetTol;   // The method to find this pt needs to be clarified
+
+                Plane norPl = new Plane(startPt, avgNormal);
+
+                Vector3d[] pIIIstartDirs = new Vector3d[4];
+                pIIIstartDirs[0] = norPl.XAxis;
+                pIIIstartDirs[1] = -norPl.XAxis;
+                pIIIstartDirs[2] = norPl.YAxis;
+                pIIIstartDirs[3] = -norPl.YAxis;
+
+                for (int j = 0; j < pIIIstartDirs.Length; j++)
+                {
+                    LoadPathCurve lPath = new LoadPathCurve(post.mask, startPt, pIIIstartDirs[j], post.princpDir, post.princpStress);
+                    lPath.ConstructLoadPath(scaleDelta, false);
 
                     if (lPath.loadPath.IsValid)
                     {
+                        phaseIIcrvs.Add(lPath.loadPath);
+
                         Curve potIII = PolylineToCurve(lPath.loadPath, 1);
 
-                        List<Point3d> ptsL = new List<Point3d>();
+                        List<Tuple<double, Point3d>> L = new List<Tuple<double, Point3d>>();
 
                         for (int ii = 0; ii < pI.Count; ii++)
                         {
-                            CurveIntersections crvInter = Intersection.CurveCurve(pI[ii].pLineCurve, potIII, intTol, 0.0);
-                            if (crvInter != null && crvInter.Count > 0)
+                            if (potIII.ClosestPoint(pI[ii].endPt, out double t, intTol))
                             {
-                                IntersectionEvent intEvent = crvInter[0];                                    
-
-                                // It is enough to only measure against the end pts
-                                if (intEvent.PointA.DistanceToSquared(pI[ii].endPt) < tol * tol)
-                                    ptsL.Add(pI[ii].endPt);                                                                 
+                                L.Add(new Tuple<double, Point3d>(t, pI[ii].endPt));
                             }
                         }
 
-                        if (ptsL.Count > 1)
+                        List<Point3d> pts = new List<Point3d>();
+
+                        if (L.Count > 1)
                         {
-                            for (int ii = 0; ii < ptsL.Count - 1; ii++)
+                            L = L.OrderBy(x => x.Item1).ToList();
+
+                            for (int ii = 0; ii < L.Count; ii++)
                             {
-                                Line l = new Line(ptsL[ii], ptsL[ii + 1]);
+                                pts.Add(L[ii].Item2);
+                            }
+                        }
+
+                        if (pts.Count > 1)
+                        {
+                            for (int ii = 0; ii < pts.Count - 1; ii++)
+                            {
+                                Line l = new Line(pts[ii], pts[ii + 1]);
                                 truss.Add(l);
                             }
                         }

@@ -57,7 +57,7 @@ namespace Krill
             stressCutOffLim = maxPstress / 50000.0;
         }
 
-        public void ConstructLoadPath(double scaleStep)
+        public void ConstructLoadPath(double scaleStep, bool incSignChange)
         {
 
             int maxNoStep = (int)1e3;   // Max number of steps
@@ -84,7 +84,7 @@ namespace Krill
 
                 Vector3d oldAveDf;
 
-                //int oldSign = Math.Sign(LerpPstress(x0, dfx0));
+                int oldSign = Math.Sign(LerpPstress(x0, dfx0));
 
                 for (int j = 0; j < 10; j++)
                 {
@@ -109,6 +109,7 @@ namespace Krill
 
                 pathPts.Add(x1);
 
+                // Is this break-statement creating more problems than it solves? For some problems it seems to work better without it
                 // If the stress at p-stress at point x1 is too low, break
                 double pStress = Math.Abs(LerpPstress(x1, moveVec));
                 if (pStress < stressCutOffLim)
@@ -118,11 +119,11 @@ namespace Krill
                 if (i > 10 && x1.DistanceToSquared(startPt) < step * step)
                     break;
 
-                //int newSign = Math.Sign(LerpPstress(x1, moveVec));
+                int newSign = Math.Sign(LerpPstress(x1, moveVec));
 
-                //if (Math.Abs(oldSign - newSign) == 2)
-                //    break;            
-                                
+                if (incSignChange && Math.Abs(oldSign - newSign) == 2)
+                    break;
+
             }
             loadPath = new Polyline(pathPts);
         }
@@ -508,6 +509,14 @@ namespace Krill
             int INDi1j0k1 = startVoxels.CoordToIndex(i1j0k1);
             int INDi0j1k1 = startVoxels.CoordToIndex(i0j1k1);
             int INDi1j1k1 = startVoxels.CoordToIndex(i1j1k1);
+
+            if ((startVoxels.cellValues[INDi0j0k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k0] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k0] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j0k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j0k1] & maskbit) == 0
+                 && (startVoxels.cellValues[INDi0j1k1] & maskbit) == 0 && (startVoxels.cellValues[INDi1j1k1] & maskbit) == 0)
+            {
+                return 0;
+            }
 
             List<int> INDs = new List<int>();
 
