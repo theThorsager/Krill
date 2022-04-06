@@ -51,10 +51,11 @@ namespace Krill.Grasshopper
 
             OutputResults results = new OutputResults(linearSolution);
 
-            results.UpdateFakeStrains(linearSolution.displacments);
+            //results.UpdateFakeStrains(linearSolution.displacments);
             results.UpdateFakeStress2(linearSolution.displacments);
             results.UpdateVonMises();
             results.UpdatePrincipalStresses();
+            results.CalcDivOfStressField();
 
             Param.PostProcessingResultsGoo postResults = new Param.PostProcessingResultsGoo(new PostProcessingResults() 
                 { mask = linearSolution.mask,
@@ -76,7 +77,10 @@ namespace Krill.Grasshopper
                   vonMises = results.vonMises,
                   princpDir = results.princpDir,
                   princpStress = results.princpStress,
-                  stressTensor = results.stressTensor
+                  stressTensor = results.stressTensor,
+
+                  lengthDivStress = results.lengthDivStress,
+                  divOfStress = results.divOfStress
                     });
 
             if (!(postResults is null))

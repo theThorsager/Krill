@@ -146,8 +146,8 @@ namespace Krill.Grasshopper
                 //curlSum.Add(outputR.sumCurl.cellValues[i]);
                 //curlSumP.Add(outputR.sumCurlPstress.cellValues[i]);
 
-                //divStress.Add(outputR.lengthDivStress.cellValues[i]);
-                //divVec.Add(outputR.divOfStress.cellValues[i]);
+                divStress.Add(postResults.lengthDivStress.cellValues[i]);
+                divVec.Add(postResults.divOfStress.cellValues[i]);
             }
 
             // Set data

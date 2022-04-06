@@ -201,6 +201,19 @@ namespace Krill
                 double tempZZ = Math.Abs(bodyload.cellValues[i].Z / vol) + Math.Abs(springs.cellValues[i].Z * dispVoxels.cellValues[i].Z);
                 tempZZ *= reduction;
                 stressZZ.cellValues[i] += Math.Sign(stressZZ.cellValues[i]) * tempZZ;
+
+                Matrix tensor = new Matrix(3, 3);
+                tensor[0, 0] = stressXX.cellValues[i];
+                tensor[0, 1] = stressXY.cellValues[i];
+                tensor[0, 2] = stressXZ.cellValues[i];
+                tensor[1, 0] = stressXY.cellValues[i];
+                tensor[1, 1] = stressYY.cellValues[i];
+                tensor[1, 2] = stressYZ.cellValues[i];
+                tensor[2, 0] = stressXZ.cellValues[i];
+                tensor[2, 1] = stressYZ.cellValues[i];
+                tensor[2, 2] = stressZZ.cellValues[i];
+
+                stressTensor.cellValues[i] = tensor;
             }
         }
 

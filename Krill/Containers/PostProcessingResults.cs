@@ -31,5 +31,8 @@ namespace Krill.Containers
         public Voxels<Vector3d[]> princpDir { get; set; } = null;
         public Voxels<Matrix> stressTensor { get; set; } = null;
 
+        public Voxels<double> lengthDivStress { get; set; } = null;
+        public Voxels<Vector3d> divOfStress { get; set; } = null;
+
     }
 }
