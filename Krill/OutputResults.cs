@@ -186,7 +186,10 @@ namespace Krill
 
                 stressXX.cellValues[i] *= 0.5;
                 stressXY.cellValues[i] *= 0.5;
+                stressXZ.cellValues[i] *= 0.5;
                 stressYY.cellValues[i] *= 0.5;
+                stressYZ.cellValues[i] *= 0.5;
+                stressZZ.cellValues[i] *= 0.5;
 
                 // the BCs force contributions should be added
                 double reduction = startVoxels.delta;
