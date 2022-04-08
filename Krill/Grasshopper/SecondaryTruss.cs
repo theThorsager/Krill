@@ -104,22 +104,22 @@ namespace Krill.Grasshopper
                     vecs[2] = pl.YAxis;
                     vecs[3] = -pl.YAxis;
 
-                    for (int j = 0; j < 4; j++)
-                    {
-                        LoadPathCurve lPath = new LoadPathCurve(post.mask, truss[i], vecs[j], post.princpDir, post.princpStress);
+                    //for (int j = 0; j < 4; j++)
+                    //{
+                    //    LoadPathCurve lPath = new LoadPathCurve(post.mask, truss[i], vecs[j], post.princpDir, post.princpStress);
 
-                        if (lPath.SecondaryLoadPath(scaleStep, tol, nds, out int ind))
-                        {
-                            Line ln = new Line(truss[i], nds[ind]);
-                            Line lnF = ln;
-                            lnF.Flip();
+                    //    if (lPath.SecondaryLoadPath(scaleStep, tol, nds, out int ind))
+                    //    {
+                    //        Line ln = new Line(truss[i], nds[ind]);
+                    //        Line lnF = ln;
+                    //        lnF.Flip();
 
-                            if (!secTruss.Contains(ln) && !secTruss.Contains(lnF))
-                                secTruss.Add(ln);
-                        }
-                        Polyline pL = lPath.loadPath;
-                        princpCrv.Add(pL);
-                    }
+                    //        if (!secTruss.Contains(ln) && !secTruss.Contains(lnF))
+                    //            secTruss.Add(ln);
+                    //    }
+                    //    Polyline pL = lPath.loadPath;
+                    //    princpCrv.Add(pL);
+                    //}
                 }
             }
 
