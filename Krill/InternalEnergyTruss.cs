@@ -25,6 +25,7 @@ namespace Krill
 
         public double[] us = null;
         double[] f = null;
+        double[] fb = null;
 
         double E;
         double fyd;
@@ -37,6 +38,18 @@ namespace Krill
         public int nlockedDOF;
         int[] ailising;
         bool[] lockedDOF = null;
+        bool[] fixedVariable = null;
+        double[] fixedDirections = null;
+
+        public int nExtraElements = 0;
+        double[] AsE = null;
+        double[] lsE = null;
+        List<Tuple<Point3d, int, double>> ExtraElements = new List<Tuple<Point3d, int, double>>();
+
+        public List<double> Forces()
+        {
+            return eps.Zip(As, (e, a) => e * a * E).ToList();
+        }
 
         public InternalEnergyTruss()
         { }
@@ -51,10 +64,10 @@ namespace Krill
 
             // Need to apply f somehow
             f = new double[nVariables];
-            for (int i = 0; i < f.Length; i++)
-            {
-                f[i] = (i + 1) % 3 == 0 ? -1 : 0;
-            }
+            //for (int i = 0; i < f.Length; i++)
+            //{
+            //    f[i] = (i + 1) % 3 == 0 ? -1 : 0;
+            //}
 
             this.fyd = fyd;
             this.E = E;
@@ -68,6 +81,8 @@ namespace Krill
             nlockedDOF = 0;
             ailising = Enumerable.Range(0, nVariables).ToArray();
             lockedDOF = new bool[nVariables];
+            fixedVariable = new bool[nVariables];
+            fixedDirections = new double[nVariables];
 
             // Working memory Matrices
             T = new DenseMatrix(2, 6);
@@ -81,6 +96,132 @@ namespace Krill
             TtK2 = new DenseMatrix(6, 2);
             TtK3 = new DenseMatrix(6, 2);
             TtKT1 = new DenseMatrix(6, 6);
+
+            
+        }
+
+        public void LockZ()
+        {
+            for (int i = 0; i < nVariables; i += 3)
+            {
+                lockedDOF[i + 2] = true;
+                fixedVariable[i + 2] = true;
+            }
+        }
+        public void LockElement(Point3d from, Point3d to)
+        {
+            int i = FindPoint(from);
+            int j = FindPoint(to);
+            fixedVariable[i * 3 + 0] = true;
+            fixedVariable[i * 3 + 1] = true;
+            fixedVariable[i * 3 + 2] = true;
+            lockedDOF[i * 3 + 0] = true;
+            lockedDOF[i * 3 + 1] = true;
+            lockedDOF[i * 3 + 2] = true;
+
+            SetFixedDir(j, from - to);
+        }
+
+        public void SetExtraElement(Point3d extra, Point3d to, double f)
+        {
+            int i = FindPoint(to);
+            SetExtraElement(extra, i, f);
+        }
+        public void SetExtraElement(Point3d extra, int to, double f)
+        {
+            nExtraElements++;
+            ExtraElements.Add(new Tuple<Point3d, int, double>(extra, to, f));
+            Point3d pt = new Point3d(xs[to * 3], xs[to * 3 + 1], xs[to * 3 + 2]);
+            SetFixedDir(to, pt - extra);
+        }
+        public void ApplyBC(Containers.DiscreteBoundaryConditionNuemann bcN)
+        {
+            int i = FindPoint(bcN.pts);
+            if (i != -1)
+            {
+                // Apply load
+                f[i * 3] += bcN.load.X;
+                f[i * 3 + 1] += bcN.load.Y;
+                f[i * 3 + 2] += bcN.load.Z;
+                //fixedVariable[i] |= true;
+                //fixedVariable[i + 1] |= true;
+                //fixedVariable[i + 2] |= true;
+            }
+        }
+        private int FindPoint(Point3d pt)
+        {
+            const double tol = 1e-1;
+            const double sqtol = tol * tol;
+            // Find corresponding point
+            for (int i = 0; i < nVariables; i += 3)
+            {
+                double x = xs[i] - pt.X;
+                double y = xs[i + 1] - pt.Y;
+                double z = xs[i + 2] - pt.Z;
+                double sq = x * x + y * y + z * z;
+                if (sq < sqtol)
+                {
+                    return i / 3;
+                }
+            }
+            return -1;
+        }
+
+        public void SetFixedDir(Point3d pt, Vector3d dir)
+        {
+            int i  = FindPoint(pt);
+            if (i != -1)
+                SetFixedDir(i, dir);
+        }
+        public void SetFixedDir(int i, Vector3d dir)
+        {
+            dir.Unitize();
+            fixedDirections[i*3+0] = dir.X;
+            fixedDirections[i*3+1] = dir.Y;
+            fixedDirections[i*3+2] = dir.Z;
+        }
+        public void ConstrainToDirections(double[] gradient)
+        {
+            for (int i = 0; i < nVariables; i += 3)
+            {
+                double x = fixedDirections[i];
+                double y = fixedDirections[i+1];
+                double z = fixedDirections[i+2];
+                double sq = x * x + y * y + z * z;
+                if (sq > 0.1)
+                {
+                    double gx = gradient[i];
+                    double gy = gradient[i+1];
+                    double gz = gradient[i+2];
+                    double l = gx * x + gy * y + gz * z;
+                    gradient[i] = l * x;
+                    gradient[i+1] = l * y;
+                    gradient[i+2] = l * z;
+                }
+            }
+        }
+        public void ApplyBC(Containers.DiscreteBoundaryConditionDirechlet bcD)
+        {
+            int i = FindPoint(bcD.pts);
+            if (i != -1)
+            {
+                // Apply disp
+                if (bcD.lockX)
+                    us[i * 3] = bcD.displacement.X;
+
+                if (bcD.lockY)
+                    us[i * 3 + 1] = bcD.displacement.Y;
+
+                if (bcD.lockZ)
+                    us[i * 3 + 2] = bcD.displacement.Z;
+
+                lockedDOF[i * 3] |= bcD.lockX;
+                lockedDOF[i * 3 + 1] |= bcD.lockY;
+                lockedDOF[i * 3 + 2] |= bcD.lockZ;
+                //fixedVariable[i] |= true;
+                //fixedVariable[i + 1] |= true;
+                //fixedVariable[i + 2] |= true;
+            }
         }
 
         public void LockDOFs(bool[] locked)
@@ -102,13 +243,44 @@ namespace Krill
             nlockedDOF = -(countNeg + 1);
         }
 
+        public void BCPost()
+        {
+            int countPos = 0;
+            int countNeg = -1;
+            for (int i = 0; i < nVariables; i++)
+            {
+                if (lockedDOF[i])
+                {
+                    ailising[i] = countNeg--;
+                }
+                else
+                {
+                    ailising[i] = countPos++;
+                }
+            }
+            nlockedDOF = -(countNeg + 1);
+
+            double[] fa = new double[nlockedDOF];
+            fb = new double[nVariables - nlockedDOF];
+            Split(f, fb, fa);
+
+            lsE = new double[nExtraElements];
+            AsE = new double[nExtraElements];
+        }
+
         public void SetData(double[] As, double[] xs = null)
         {
             if (!(xs is null))
                 this.xs = xs;
 
-            this.As = As;
+            
+            if (!(As is null))
+            {
+                As[4] = 0.01;
+                As[5] = 0.01;
 
+                this.As = As;
+            }
             // Set new lengths
             for (int i = 0; i < nElements; i++)
             {
@@ -117,6 +289,17 @@ namespace Krill
                 double z = this.xs[connections[i].Item2 * 3 + 2] - this.xs[connections[i].Item1 * 3 + 2];
                 double l = Math.Sqrt(x * x + y * y + z * z);
                 ls[i] = l;
+            }
+
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                var curr = ExtraElements[i];
+                double x = this.xs[curr.Item2 * 3] - curr.Item1.X;
+                double y = this.xs[curr.Item2 * 3 + 1] - curr.Item1.Y;
+                double z = this.xs[curr.Item2 * 3 + 2] - curr.Item1.Z;
+                double l = Math.Sqrt(x * x + y * y + z * z);
+                lsE[i] = l;
+                AsE[i] = 1;
             }
         }
 
@@ -140,6 +323,8 @@ namespace Krill
             return Compute();
         }
 
+        double strainFactor = 10;
+
         public double ComputeValueAndGradient(ref double[] gradient)
         {
             if (nVariables == nlockedDOF)
@@ -156,7 +341,7 @@ namespace Krill
 
             for (int i = 0; i < nVariables; i++)
             {
-                if (lockedDOF[i])
+                if (fixedVariable[i])
                     gradient[i] = 0;
                 else
                     gradient[i] = ComputeDerivative(i);
@@ -171,7 +356,17 @@ namespace Krill
 
             for (int i = 0; i < nElements; i++)
             {
-                res += E * As[i] * ls[i] * eps[i] * eps[i];
+                double factor = eps[i] < 0 ? 1 : strainFactor;
+
+                res += factor * E * As[i] * ls[i] * eps[i] * eps[i];
+            }
+
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                double ep = StrainE(i);
+                double factor = ep < 0 ? 1 : strainFactor;
+
+                res += factor * E * AsE[i] * lsE[i] * ep * ep;
             }
 
             return res;
@@ -198,8 +393,28 @@ namespace Krill
                 double deps = Dstrain(i, dindex, dl, dus);
                 double dA = 0; // E * A * deps / fyd;
 
-                res += 
+                double factor = ep < 0 ? 1 : strainFactor;
+
+
+                res += factor *
                     E * (2 * A * l * deps * ep + 
+                    (dA * l + A * dl) * ep * ep);
+            }
+
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                double A = AsE[i];
+                double l = lsE[i];
+                double ep = StrainE(i);
+
+                double dl = DlengthE(i, dindex);
+                double dA = 0; // E * A * deps / fyd;
+                double deps = DstrainE(i, dindex, dl, dus, dA);
+
+                double factor = ep < 0 ? 1 : strainFactor;
+
+                res -= factor *
+                    E * (2 * A * l * deps * ep +
                     (dA * l + A * dl) * ep * ep);
             }
 
@@ -227,7 +442,7 @@ namespace Krill
             double[] usb = new double[nVariables - nlockedDOF];
             Split(us, usb, usa);
 
-            LDL.Solve(f, usb);
+            LDL.Solve(fb, usb);
 
             Merge(usb, usa, us);
 
@@ -263,10 +478,10 @@ namespace Krill
             Split(res, usb, usa);
 
             double[] res1 = new double[nVariables - nlockedDOF];
-            LDL.Solve(usb, res);
+            LDL.Solve(usb, res1);
 
             double[] res2 = new double[nVariables];
-            Merge(res1, new double[nlockedDOF], res2);
+            Merge(res1, usa, res2);
             return res2;
         }
         private void Split<T>(T[] input, T[] a, T[] b)
@@ -310,63 +525,38 @@ namespace Krill
         }
         private void ImplicitAssembleMultiply(DenseMatrix Ae, int eIndex, double[] u, double[] res)
         {
-            int ix = connections[eIndex].Item1 * 3;
-            int jx = connections[eIndex].Item2 * 3;
+            int start = connections[eIndex].Item1 * 3;
+            int end = connections[eIndex].Item2 * 3;
 
             for (int i = 0; i < 3; i++)
             {
                 for (int j = 0; j < 3; j++)
                 {
-                    res[ix + i] += Ae[i, j] * u[ix + j];
-                    res[ix + i] += Ae[i, j + 3] * u[jx + j];
-                    res[jx + i] += Ae[i + 3, j] * u[ix + j];
-                    res[jx + i] += Ae[i + 3, j + 3] * u[jx + j];
+                    res[start + i] += Ae[i, j] * u[start + j];
+                    res[start + i] += Ae[i, j + 3] * u[end + j];
+                    res[end + i] += Ae[i + 3, j] * u[start + j];
+                    res[end + i] += Ae[i + 3, j + 3] * u[end + j];
                 }
             }
         }
         private void Assemble(CoordinateStorage<double> A, CoordinateStorage<double> As, DenseMatrix Ae, int elementIndex)
         {
             int ix = ailising[connections[elementIndex].Item1 * 3];
+            int iy = ailising[connections[elementIndex].Item1 * 3 + 1];
+            int iz = ailising[connections[elementIndex].Item1 * 3 + 2];
             int jx = ailising[connections[elementIndex].Item2 * 3];
+            int jy = ailising[connections[elementIndex].Item2 * 3 + 1];
+            int jz = ailising[connections[elementIndex].Item2 * 3 + 2];
 
-            if (ix >= 0 && jx >= 0)
+            int[] arr = new int[6] { ix, iy, iz, jx, jy, jz };
+
+            for (int i = 0; i < 6; i++)
             {
-                for (int i = 0; i < 3; i++)
+                for (int j = 0; j < 6; j++)
                 {
-                    for (int j = 0; j < 3; j++)
+                    if (arr[i] >= 0 && arr[j] >= 0)
                     {
-                        A.At(ix + i, ix + j, Ae[i, j]);
-                        A.At(ix + i, jx + j, Ae[i, j + 3]);
-                        A.At(jx + i, ix + j, Ae[i + 3, j]);
-                        A.At(jx + i, jx + j, Ae[i + 3, j + 3]);
-                    }
-                }
-            }
-            else if (ix < 0 && jx >= 0)
-            {
-                ix = -(ix + 1);
-                for (int i = 0; i < 3; i++)
-                {
-                    for (int j = 0; j < 3; j++)
-                    {
-                        //As.At(ix + i, ix + j, Ae[i, j]);
-                        //As.At(ix + i, jx + j, Ae[i, j + 3]);
-                        //As.At(jx + i, ix + j, Ae[i + 3, j]);
-                        A.At(jx + i, jx + j, Ae[i + 3, j + 3]);
-                    }
-                }
-            }
-            else if (ix >= 0 && jx < 0)
-            {
-                jx = -(jx + 1);
-                for (int i = 0; i < 3; i++)
-                {
-                    for (int j = 0; j < 3; j++)
-                    {
-                        A.At(ix + i, ix + j, Ae[i, j]);
-                        //As.At(ix + i, jx + j, Ae[i, j + 3]);
-                        //As.At(jx + i, ix + j, Ae[i + 3, j]);
-                        //As.At(jx + i, jx + j, Ae[i + 3, j + 3]);
+                        A.At(arr[i], arr[j], Ae[i, j]);
                     }
                 }
             }
@@ -427,7 +617,7 @@ namespace Krill
         private void DLocalElementStiffness(int dindex, int elementIndex)
         {
             int i = elementIndex;
-            double temp = -dls[i] * E * As[i] / (ls[i] * ls[i]);
+            double temp = -dls[i] * E * As[i] / (ls[i] * ls[i]); // dAs needs to be added
             dKelocal[0, 0] = temp;
             dKelocal[0, 1] = -temp;
             dKelocal[1, 0] = -temp;
@@ -460,7 +650,7 @@ namespace Krill
             int i = elementIndex;
             var factor = connections[i].Item1 * 3 == dindex ? -1 : 0;
             factor = connections[i].Item2 * 3 == dindex ? 1 : factor;
-            double nx = ( factor * ls[i] - (xs[connections[i].Item2 * 3] - xs[connections[i].Item1 * 3]) * dls[i]) / (ls[i] * ls[i]);
+            double nx = (factor * ls[i] - (xs[connections[i].Item2 * 3] - xs[connections[i].Item1 * 3]) * dls[i]) / (ls[i] * ls[i]);
 
             factor = connections[i].Item1 * 3 + 1 == dindex ? -1 : 0;
             factor = connections[i].Item2 * 3 + 1 == dindex ? 1 : factor;
@@ -499,8 +689,16 @@ namespace Krill
                 us[con.Item2 * 3 + 1],
                 us[con.Item2 * 3 + 2]);
 
-            double res = t * (ustart - uend);
+            double res = t * (uend - ustart);
             return res / l;
+        }
+
+        private double StrainE(int i)
+        {
+            var con = ExtraElements[i];
+
+            double F = con.Item3;
+            return F / (AsE[i] * E);
         }
 
         private double Dstrain(int i, int dindex, double dlength, double[] dus)
@@ -549,20 +747,28 @@ namespace Krill
                 dus[con.Item2 * 3 + 1],
                 dus[con.Item2 * 3 + 2]);
 
-            double res = (dt * (ustart - uend) + t * (dustart - duend)) * l - t * (ustart - uend) * dlength;
+            double res = (dt * (uend- ustart) + t * (duend - dustart)) * l - t * (uend - ustart) * dlength;
             return res / (l * l);
         }
-        
+        private double DstrainE(int i, int dindex, double dlength, double[] dus, double dA)
+        {
+            var curr = ExtraElements[i];
+
+            double F = curr.Item3;
+            double res = -F * dA / (E * AsE[i] * AsE[i]);
+            return res;
+        }
+
         private double Dlength(int i, int dindex)
         {
             var con = connections[i];
 
-            if (Math.Abs(con.Item1 * 3 - dindex + 1) <= 1)
+            if (NodeConnectsToVariable(con.Item1, dindex))
             {
                 double diff = xs[con.Item2 * 3 + (dindex % 3)] - xs[dindex];
                 return - diff / ls[i];
             }
-            else if (Math.Abs(con.Item2 * 3 - dindex + 1) <= 1)
+            else if (NodeConnectsToVariable(con.Item2, dindex))
             {
                 double diff = xs[dindex] - xs[con.Item1 * 3 + (dindex % 3)];
                 return diff / ls[i];
@@ -570,12 +776,28 @@ namespace Krill
             return 0.0;
         }
 
+        private double DlengthE(int i, int dindex)
+        {
+            var curr = ExtraElements[i];
+
+            if (NodeConnectsToVariable(curr.Item2, dindex))
+            {
+                double diff = xs[dindex] - curr.Item1[dindex % 3];
+                return diff / lsE[i];
+            }
+            return 0.0;
+        }
+
         private bool ElementConnectsToVariable(int eIndex, int vIndex)
         {
-            int i = connections[eIndex].Item1 * 3;
-            int j = connections[eIndex].Item2 * 3;
+            return NodeConnectsToVariable(connections[eIndex].Item1, vIndex) ||
+                   NodeConnectsToVariable(connections[eIndex].Item2, vIndex);
+        }
 
-            return Math.Abs(vIndex - i + 1) <= 1 || Math.Abs(vIndex - j + 1) <= 1;
+        private bool NodeConnectsToVariable(int nIndex, int vIndex)
+        {
+            int i = vIndex - nIndex * 3;
+            return i >= 0 && i < 3;
         }
     }
 }

@@ -25,8 +25,13 @@ namespace Krill.Grasshopper
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddParameter(new Param.TrussGeometryParam());
+            pManager.AddParameter(new Param.DiscreteBoundaryConditionParam(), "BCs", "BCs", "", GH_ParamAccess.list);
             pManager.AddIntegerParameter("n", "n", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("alpha", "a", "", GH_ParamAccess.item);
+            pManager.AddBooleanParameter("lockZ", "lockZ", "", GH_ParamAccess.item);
+            pManager.AddLineParameter("Extra", "E", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("load", "l", "", GH_ParamAccess.list);
+            pManager.AddLineParameter("Dirichlet", "D", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -50,41 +55,90 @@ namespace Krill.Grasshopper
             Param.TrussGeometryGoo truss = null;
             DA.GetData(0, ref truss);
 
+            var bcsGoo = new List<Param.DiscreteBoundaryConditionGoo>();
+            DA.GetDataList(1, bcsGoo);
+            var BCs = bcsGoo.Select(x => x.Value);
+
             int n = 1;
-            DA.GetData(1, ref n);
+            DA.GetData(2, ref n);
 
             double a = 1;
-            DA.GetData(2, ref a);
+            DA.GetData(3, ref a);
+
+            bool lockZ = false;
+            DA.GetData(4, ref lockZ);
+
+            List<Line> Elines = new List<Line>();
+            DA.GetDataList(5, Elines);
+
+            List<double> loads = new List<double>();
+            DA.GetDataList(6, loads);
+
+            List<Line> Dlines = new List<Line>();
+            DA.GetDataList(7, Dlines);
 
             if (truss?.Value is null)
                 return;
 
+
             var energyTruss = new InternalEnergyTruss();
             energyTruss.Init(truss.Value);
             
+            
+
+            foreach (var bc in BCs)
+            {
+                if (bc is Containers.DiscreteBoundaryConditionDirechlet bcD)
+                {
+                    energyTruss.ApplyBC(bcD);
+                }
+                else if (bc is Containers.DiscreteBoundaryConditionNuemann bcN)
+                {
+                    energyTruss.ApplyBC(bcN);
+                }
+            }
+            if (lockZ)
+                energyTruss.LockZ();
+
+            for (int i = 0; i < Elines.Count; i++)
+            {
+                energyTruss.SetExtraElement(Elines[i].From, Elines[i].To, loads[i]);
+            }
+            for (int i = 0; i < Dlines.Count; i++)
+            {
+                energyTruss.LockElement(Dlines[i].From, Dlines[i].To);
+            }
+
+            energyTruss.BCPost();
+
             var areas = new double[energyTruss.nElements];
             energyTruss.SetData(areas.Select(x => 1.0).ToArray());
 
-            var locked = new bool[energyTruss.nVariables];
-            var indecies = truss.Value.Connections.SelectMany(x => new int[] { x.Item1, x.Item2 }).ToList();
-            for (int i = 0; i < energyTruss.nVariables / 3; i++)
-            {
-                if (indecies.Count(x => x == i) == 1)
-                {
-                    locked[i*3] = true;
-                    locked[i*3+1] = true;
-                    locked[i*3+2] = true;
-                }
-            }
+            //var locked = new bool[energyTruss.nVariables];
+            //var indecies = truss.Value.Connections.SelectMany(x => new int[] { x.Item1, x.Item2 }).ToList();
+            //for (int i = 0; i < energyTruss.nVariables / 3; i++)
+            //{
+            //    if (indecies.Count(x => x == i) == 1)
+            //    {
+            //        locked[i*3] = true;
+            //        locked[i*3+1] = true;
+            //        locked[i*3+2] = true;
+            //    }
+            //}
 
-            energyTruss.LockDOFs(locked);
+            //energyTruss.LockDOFs(locked);
 
             var gradient = new double[energyTruss.nVariables];
             double energy = -1;
             for (int i = 0; i < n; i++)
             {
+                //if (i > 50)
+                //    a = 0.001;
+
                 energy = energyTruss.ComputeValueAndGradient(ref gradient);
+                energyTruss.ConstrainToDirections(gradient);
                 energyTruss.ApplyGradient(gradient, a);
+                energyTruss.SetData(null);
             }
 
 
@@ -109,7 +163,7 @@ namespace Krill.Grasshopper
             DA.SetData(0, energy);
             DA.SetDataList(1, grad);
             DA.SetDataList(2, disp);
-            DA.SetDataList(3, energyTruss.eps);
+            DA.SetDataList(3, energyTruss.Forces());
             DA.SetDataList(4, lines);
         }
 
