@@ -25,11 +25,11 @@ namespace Krill.Grasshopper.Param
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             // Direchlet
-            pManager.AddPointParameter("pts", "pts", "", GH_ParamAccess.item);
-            pManager.AddBooleanParameter("x", "x", "", GH_ParamAccess.item, true);
-            pManager.AddBooleanParameter("y", "y", "", GH_ParamAccess.item, true);
-            pManager.AddBooleanParameter("z", "z", "", GH_ParamAccess.item, true);
-            pManager.AddVectorParameter("displacment", "disp", "", GH_ParamAccess.item);
+            pManager.AddLineParameter("line", "l", "", GH_ParamAccess.item);
+            //pManager.AddBooleanParameter("x", "x", "", GH_ParamAccess.item, true);
+            //pManager.AddBooleanParameter("y", "y", "", GH_ParamAccess.item, true);
+            //pManager.AddBooleanParameter("z", "z", "", GH_ParamAccess.item, true);
+            //pManager.AddVectorParameter("displacment", "disp", "", GH_ParamAccess.item);
 
         }
 
@@ -47,26 +47,14 @@ namespace Krill.Grasshopper.Param
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            var pts = new Point3d();
-            bool x = false;
-            bool y = false;
-            bool z = false;
-            var disp = new Vector3d();
+            var line = new Line();
 
-            DA.GetData(0, ref pts);
-            DA.GetData(1, ref x);
-            DA.GetData(2, ref y);
-            DA.GetData(3, ref z);
-            DA.GetData(4, ref disp);
+            DA.GetData(0, ref line);
 
 
             var direchlet = new Containers.DiscreteBoundaryConditionDirechlet()
             {
-                pts = pts,
-                lockX = x,
-                lockY = y,
-                lockZ = z,
-                displacement = disp
+                line = line
             };
 
             DA.SetData(0, new DiscreteBoundaryConditionGoo(direchlet));

@@ -24,8 +24,8 @@ namespace Krill.Grasshopper.Param
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddPointParameter("pts", "pts", "", GH_ParamAccess.item);
-            pManager.AddVectorParameter("load", "load", "", GH_ParamAccess.item);
+            pManager.AddLineParameter("line", "line", "", GH_ParamAccess.item);
+            pManager.AddNumberParameter("load", "load", "", GH_ParamAccess.item);
 
         }
 
@@ -43,15 +43,15 @@ namespace Krill.Grasshopper.Param
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            var pts = new Point3d();
-            var load = new Vector3d();
+            var line = new Line();
+            var load = 0.0;
 
-            DA.GetData(0, ref pts);
+            DA.GetData(0, ref line);
             DA.GetData(1, ref load);
 
             var nuemann = new Containers.DiscreteBoundaryConditionNuemann()
             {
-                pts = pts,
+                line = line,
                 load = load
             };
 

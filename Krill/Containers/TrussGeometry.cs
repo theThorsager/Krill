@@ -12,5 +12,6 @@ namespace Krill.Containers
     {
         public List<Point3d> Nodes { get; set; }
         public List<Tuple<int, int>> Connections { get; set; }
+        public List<double> Areas { get; set; }
     }
 }

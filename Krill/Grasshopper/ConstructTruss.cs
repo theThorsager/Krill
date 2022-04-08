@@ -26,6 +26,8 @@ namespace Krill.Grasshopper
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             pManager.AddCurveParameter("lines", "ls", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("areas", "as", "", GH_ParamAccess.list);
+            pManager[1].Optional = true;
         }
 
         /// <summary>
@@ -45,6 +47,15 @@ namespace Krill.Grasshopper
             List<Curve> curves = new List<Curve>();
             List<Line> lines = new List<Line>();
             DA.GetDataList(0, curves);
+
+            List<double> areas = new List<double>();
+            DA.GetDataList(1, areas);
+
+            double emergencyArea = areas.LastOrDefault();
+            if (areas.Count == 0)
+                emergencyArea = 1.0;
+
+            List<double> freshAreas = new List<double>();
 
             foreach (var c in curves)
             {
@@ -104,6 +115,7 @@ namespace Krill.Grasshopper
                 }
 
                 connections.Add(new Tuple<int, int>(a, b));
+                freshAreas.Add(i < areas.Count ? areas[i] : emergencyArea);
             }
 
             for (int i = 0; i < connections.Count; i++)
@@ -114,13 +126,21 @@ namespace Krill.Grasshopper
                         connections[i].Item1 == connections[j].Item1 && connections[i].Item2 == connections[j].Item2)
                     {
                         connections.RemoveAt(j);
+                        if (j < areas.Count)
+                        {
+                            freshAreas[i] = (freshAreas[i] + freshAreas[j]) * 0.5;
+                        }
+                        freshAreas.RemoveAt(j);
                     }
                 }
             }
 
-            var truss = new Containers.TrussGeometry();
-            truss.Nodes = nodes;
-            truss.Connections = connections;
+            var truss = new Containers.TrussGeometry
+            {
+                Nodes = nodes,
+                Connections = connections,
+                Areas = freshAreas
+            };
 
             DA.SetData(0, new Param.TrussGeometryGoo(truss));
         }

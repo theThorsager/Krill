@@ -29,9 +29,6 @@ namespace Krill.Grasshopper
             pManager.AddIntegerParameter("n", "n", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("alpha", "a", "", GH_ParamAccess.item);
             pManager.AddBooleanParameter("lockZ", "lockZ", "", GH_ParamAccess.item);
-            pManager.AddLineParameter("Extra", "E", "", GH_ParamAccess.list);
-            pManager.AddNumberParameter("load", "l", "", GH_ParamAccess.list);
-            pManager.AddLineParameter("Dirichlet", "D", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -68,72 +65,54 @@ namespace Krill.Grasshopper
             bool lockZ = false;
             DA.GetData(4, ref lockZ);
 
-            List<Line> Elines = new List<Line>();
-            DA.GetDataList(5, Elines);
-
-            List<double> loads = new List<double>();
-            DA.GetDataList(6, loads);
-
-            List<Line> Dlines = new List<Line>();
-            DA.GetDataList(7, Dlines);
-
             if (truss?.Value is null)
                 return;
 
-
             var energyTruss = new InternalEnergyTruss();
             energyTruss.Init(truss.Value);
-            
-            
-
+            bool first = true;
             foreach (var bc in BCs)
             {
                 if (bc is Containers.DiscreteBoundaryConditionDirechlet bcD)
                 {
-                    energyTruss.ApplyBC(bcD);
+                    int i = truss.Value.Nodes.FindIndex(x => x.DistanceToSquared(bc.line.From) < 1e-6);
+                    int count = truss.Value.Connections.SelectMany(x => new[] {x.Item1, x.Item2}).Count(x => x == i);
+
+                    if (count > 1)
+                    {
+                        energyTruss.LockElement(bcD.line.To, bcD.line.From, first);
+                    }
+                    else
+                    {
+                        energyTruss.LockElement(bcD.line.From, bcD.line.To, first);
+                    }
+                    first = false;
                 }
                 else if (bc is Containers.DiscreteBoundaryConditionNuemann bcN)
                 {
-                    energyTruss.ApplyBC(bcN);
+                    bool flip = truss.Value.Nodes.Any(x => x.DistanceToSquared(bc.line.From) < 1e-6);
+                    if (flip)
+                        energyTruss.SetExtraElement(bcN.line.To, bcN.line.From, bcN.load);
+                    else
+                        energyTruss.SetExtraElement(bcN.line.From, bcN.line.To, bcN.load);
                 }
             }
             if (lockZ)
                 energyTruss.LockZ();
 
-            for (int i = 0; i < Elines.Count; i++)
-            {
-                energyTruss.SetExtraElement(Elines[i].From, Elines[i].To, loads[i]);
-            }
-            for (int i = 0; i < Dlines.Count; i++)
-            {
-                energyTruss.LockElement(Dlines[i].From, Dlines[i].To);
-            }
-
             energyTruss.BCPost();
 
-            var areas = new double[energyTruss.nElements];
-            energyTruss.SetData(areas.Select(x => 1.0).ToArray());
-
-            //var locked = new bool[energyTruss.nVariables];
-            //var indecies = truss.Value.Connections.SelectMany(x => new int[] { x.Item1, x.Item2 }).ToList();
-            //for (int i = 0; i < energyTruss.nVariables / 3; i++)
-            //{
-            //    if (indecies.Count(x => x == i) == 1)
-            //    {
-            //        locked[i*3] = true;
-            //        locked[i*3+1] = true;
-            //        locked[i*3+2] = true;
-            //    }
-            //}
-
-            //energyTruss.LockDOFs(locked);
-
+            energyTruss.SetData(null);
             var gradient = new double[energyTruss.nVariables];
-            double energy = -1;
+            double energy = energyTruss.ComputeValue();
             for (int i = 0; i < n; i++)
             {
-                //if (i > 50)
-                //    a = 0.001;
+                if (energyTruss.mechanisim || double.IsNaN(energy))
+                {
+                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {i}");
+                    energy = double.NaN;
+                    break;
+                }
 
                 energy = energyTruss.ComputeValueAndGradient(ref gradient);
                 energyTruss.ConstrainToDirections(gradient);
@@ -142,6 +121,7 @@ namespace Krill.Grasshopper
             }
 
 
+            // Post processing
             var displac = energyTruss.us;
 
             var grad = new List<Vector3d>();
