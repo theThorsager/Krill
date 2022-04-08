@@ -76,6 +76,55 @@ namespace Krill.Grasshopper.WritingHelper
             // Add the rest
         }
 
+        public static void Write(GH_IWriter writer, string name, LinearSolution linSol)
+        {
+            Write(writer, name + "bodyload", linSol.bodyload);
+            Write(writer, name + "displacments", linSol.displacments);
+            Write(writer, name + "mask", linSol.mask);
+            Write(writer, name + "principalDirections", linSol.principalDirections);
+            Write(writer, name + "springs", linSol.springs);
+            Write(writer, name + "utilization", linSol.utilization);
+            Write(writer, name + "weighting", linSol.weighting);
+
+            if (linSol.boundaryConditions != null)
+            {
+                writer.SetInt32(name + "bcCount", linSol.boundaryConditions.Count);
+                for (int i = 0; i < linSol.boundaryConditions.Count; i++)
+                    Write(writer, name + "bcs" + i.ToString(), linSol.boundaryConditions[i]);
+            }
+            else
+                writer.SetInt32(name + "bcCount", 0);
+
+            writer.SetDouble(name + "peridelta", linSol.peridelta);
+            writer.SetDouble(name + "elasticModulus", linSol.elasticModulus);
+            writer.SetDouble(name + "bondStiffness", linSol.bondStiffness);
+            //writer.SetDouble(name + "oldcuttoff", linSol.oldcuttoff);
+
+            //writer.SetBoolean(name + "relaxTension", linSol.relaxTension);
+
+            writer.SetByteArray(name + "nList", GetBytes(linSol.nList));
+        }
+
+        public static void Write<T>(GH_IWriter writer, string name, Voxels<T> voxels)
+        {
+            if (voxels == null)
+                return;
+
+            writer.SetByteArray(name + "cells", GetBytes(voxels.cellValues));
+            writer.SetInt32(name + "n", voxels.n);
+            writer.SetDouble(name + "delta", voxels.delta);
+            writer.SetPoint3D(name + "origin", new GH_Point3D(voxels.origin.X, voxels.origin.Y, voxels.origin.Z));
+        }
+
+        public static void Write(GH_IWriter writer, string name, BoundaryConditionNuemann bc)
+        {
+            var options = new Rhino.FileIO.SerializationOptions();
+            string area = bc.area.ToJSON(options);
+            writer.SetString(name + "area", area);
+            writer.SetBoolean(name + "normal", bc.normal);
+            writer.SetDoubleArray(name + "load", new double[] { bc.load.X, bc.load.Y, bc.load.Z });
+        }
+
         private static byte[] GetBytes<T>(T obj)
         {
             if (obj == null)
@@ -147,6 +196,69 @@ namespace Krill.Grasshopper.WritingHelper
         public static BoundaryConditionNuemann2d Reader(GH_IReader reader, string name, BoundaryConditionNuemann2d bc)
         {
             bc.curve = (Curve)Curve.FromJSON(reader.GetString(name + "curve"));
+            bc.normal = reader.GetBoolean(name + "normal");
+            var arr = reader.GetDoubleArray(name + "load");
+            bc.load = new Vector3d(arr[0], arr[1], arr[2]);
+
+            return bc;
+        }
+
+        public static LinearSolution Reader(GH_IReader reader, string name, LinearSolution linSol)
+        {
+            linSol.bodyload = Reader(reader, name + "bodyload", new Voxels<Vector3d>());
+            linSol.displacments = Reader(reader, name + "displacments", new Voxels<Vector3d>());
+            linSol.mask = Reader(reader, name + "mask", new Voxels<int>());
+            linSol.principalDirections = Reader(reader, name + "principalDirections", new Voxels<Vector3d[]>());
+            linSol.springs = Reader(reader, name + "springs", new Voxels<Vector3d>());
+            linSol.utilization = Reader(reader, name + "utilization", new Voxels<double>());
+            linSol.weighting = Reader(reader, name + "weighting", new Voxels<double>());
+
+            int count = reader.GetInt32(name + "bcCount");
+            linSol.boundaryConditions = new List<BoundaryConditionNuemann>();
+            for (int i = 0; i < count; i++)
+                linSol.boundaryConditions.Add(Reader(reader, name + "bcs" + i.ToString(), new BoundaryConditionNuemann()));
+
+            linSol.peridelta = reader.GetDouble(name + "peridelta");
+            linSol.elasticModulus = reader.GetDouble(name + "elasticModulus");
+            linSol.bondStiffness = reader.GetDouble(name + "bondStiffness");
+            //linSol.oldcuttoff = reader.GetDouble(name + "oldcuttoff");
+
+            //linSol.relaxTension = reader.GetBoolean(name + "relaxTension");
+
+            var arr = reader.GetByteArray(name + "nList");
+            linSol.nList = (int[])GetObject(arr);
+
+            return linSol;
+        }
+        public static Voxels<T> Reader<T>(GH_IReader reader, string name, Voxels<T> voxels)
+        {
+            T[] cells;
+            try
+            {
+                var cellsO = reader.GetByteArray(name + "cells");
+                if (cellsO is null)
+                    return voxels;
+                cells = (T[])GetObject(cellsO);
+            }
+            catch
+            {
+                return null;
+            }
+            int n = reader.GetInt32(name + "n");
+            double delta = reader.GetDouble(name + "delta");
+            var pt = reader.GetPoint3D(name + "origin");
+            Point3d origin = new Point3d(pt.x, pt.y, pt.z);
+
+            voxels.cellValues = cells;
+            voxels.n = n;
+            voxels.origin = origin;
+            voxels.delta = delta;
+
+            return voxels;
+        }
+        public static BoundaryConditionNuemann Reader(GH_IReader reader, string name, BoundaryConditionNuemann bc)
+        {
+            bc.area = (Mesh)Mesh.FromJSON(reader.GetString(name + "area"));
             bc.normal = reader.GetBoolean(name + "normal");
             var arr = reader.GetDoubleArray(name + "load");
             bc.load = new Vector3d(arr[0], arr[1], arr[2]);
