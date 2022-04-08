@@ -276,9 +276,6 @@ namespace Krill
             
             if (!(As is null))
             {
-                As[4] = 0.01;
-                As[5] = 0.01;
-
                 this.As = As;
             }
             // Set new lengths
