@@ -54,7 +54,7 @@ namespace Krill
                 }
             }
 
-            stressCutOffLim = maxPstress / 50000.0;
+            stressCutOffLim = maxPstress / 5000.0;
         }
 
         public void ConstructLoadPath(double scaleStep, bool incSignChange)
@@ -116,7 +116,7 @@ namespace Krill
                     break;
 
                 // If it loops around to the same position, end it
-                if (i > 10 && x1.DistanceToSquared(startPt) < step * step)
+                if (i > 10 && x1.DistanceToSquared(startPt) < (step * 2) * (step * 2))
                     break;
 
                 int newSign = Math.Sign(LerpPstress(x1, moveVec));

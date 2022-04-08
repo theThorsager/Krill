@@ -128,15 +128,15 @@ namespace Krill.Grasshopper
             phaseIIcrvs = new List<Polyline>();
             truss = new List<Line>();
 
-            //////////////////////// Add more
-            Vector3d[] startDirs = new Vector3d[6];
-            startDirs[0] = Vector3d.XAxis;
-            startDirs[1] = -Vector3d.XAxis;
-            startDirs[2] = Vector3d.YAxis;
-            startDirs[3] = -Vector3d.YAxis;
-            startDirs[4] = Vector3d.ZAxis;
-            startDirs[5] = -Vector3d.ZAxis;
-
+            Vector3d[] startDirs = new Vector3d[6]
+            {
+                Vector3d.XAxis,
+                -Vector3d.XAxis,
+                Vector3d.YAxis,
+                -Vector3d.YAxis,
+                Vector3d.ZAxis,
+                -Vector3d.ZAxis
+            };
             double delta = post.mask.delta;
 
             List<Mesh> dAreas = new List<Mesh>();
@@ -174,9 +174,62 @@ namespace Krill.Grasshopper
                 }                
             }
 
-            bool[] plToBc = new bool[pLine.Count];
-            for (int i = 0; i < plToBc.Length; i++)
-                plToBc[i] = false;
+            bool[] plToBc = new bool[pLine.Count];            
+
+            // Check if it connects to another start point
+            for (int i = 0; i < pLine.Count; i++)
+            {
+                //List<double> closeTvals = new List<double>();
+                //List<int> jVals = new List<int>();
+
+                List<Tuple<double, int>> tValsAndInd = new List<Tuple<double, int>>();
+
+                double startTol = delta;
+
+                for (int j = 0; j < startPoints.Count; j++)
+                {
+                    
+                    double t = pLine[i].ClosestParameter(startPoints[j]);
+                    Point3d pt = pLine[i].PointAt(t);
+
+                    if (pt.DistanceToSquared(startPoints[j]) < startTol * startTol && pt.DistanceToSquared(pLine[i].First) > startTol * startTol)
+                        tValsAndInd.Add(new Tuple<double, int>(t, j));                    
+                }
+
+                if (tValsAndInd.Count > 0)
+                {
+                    tValsAndInd = tValsAndInd.OrderBy(x => x.Item1).ToList();
+                    pLine[i] = CutPolyline(pLine[i], tValsAndInd[0].Item1);
+                    PhaseI newPI = new PhaseI(pLine[i]);
+                    newPI.startPt = newPI.pLine.First;
+                    newPI.endPt = startPoints[tValsAndInd[0].Item2];
+
+                    bool add = true;
+
+                    for (int k = 0; k < pI.Count; k++)
+                    {
+                        // Duplicate check
+                        if ((pI[k].startPt.DistanceToSquared(newPI.startPt) < startTol * startTol && pI[k].endPt.DistanceToSquared(newPI.endPt) < startTol * startTol) ||
+                            (pI[k].startPt.DistanceToSquared(newPI.endPt) < startTol * startTol && pI[k].endPt.DistanceToSquared(newPI.startPt) < startTol * startTol))
+                        {
+                            add = false;
+                            break;
+                        }
+                    }
+
+                    if (add)
+                    {
+                        pI.Add(newPI);
+
+                        phaseIcrvs.Add(newPI.pLine);
+
+                        CorrectNode(ref nodes, newPI.startPt, tol, out bool bol);
+                        CorrectNode(ref nodes, newPI.endPt, tol, out bol);
+
+                        plToBc[i] = true;
+                    }
+                }
+            }
 
             // Searching against D-boundary
             for (int i = 0; i < dAreas.Count; i++)
@@ -197,92 +250,13 @@ namespace Krill.Grasshopper
 
                         CorrectNode(ref nodes, newPI.startPt, tol, out bool bol);
                         CorrectNode(ref nodes, newPI.endPt, tol, out bol);
-                    }                                          
-                }                
-            }
-
-            for (int i = 0; i < pLine.Count; i++)
-            {
-                List<double> closeTvals = new List<double>();
-                List<int> jVals = new List<int>();
-
-                double startTol = delta;
-
-                for (int j = 0; j < startPoints.Count; j++)
-                {
-                    
-                    double t = pLine[i].ClosestParameter(startPoints[j]);
-                    Point3d pt = pLine[i].PointAt(t);
-
-                    if (pt.DistanceToSquared(startPoints[j]) < startTol * startTol && pt.DistanceToSquared(pLine[i].First) > startTol * startTol)
-                    {
-                        closeTvals.Add(t);
-                        jVals.Add(j);
-                        //PhaseI newPI = new PhaseI(pLine[i]);
-                        //newPI.startPt = newPI.pLine.First;
-                        //newPI.endPt = startPoints[j];
-
-                        //if (pI.Last().startPt.DistanceToSquared(newPI.endPt) > tol &&
-                        //    pI.Last().endPt.DistanceToSquared(newPI.startPt) > tol)
-                        //{
-                        //    pI.Add(newPI);
-
-                        //    phaseIcrvs.Add(newPI.pLine);
-
-                        //    CorrectNode(ref nodes, newPI.startPt, tol, out bool bol);
-                        //    CorrectNode(ref nodes, newPI.endPt, tol, out bol);
-
-                        //    plToBc[i] = true;
-                        //}
-                    }
-                }
-                if (closeTvals.Count > 0)
-                {
-                    double t = closeTvals.Min();
-                    int ind = -1;
-                    for (int j = 0; j < closeTvals.Count; j++)
-                    {
-                        if (closeTvals[j] == t)
-                        {
-                            ind = jVals[j];
-                            break;
-                        }
-                    }
-                    PhaseI newPI = new PhaseI(CutPolyline(pLine[i], t));
-                    newPI.startPt = newPI.pLine.First;
-                    newPI.endPt = startPoints[ind];
-
-                    bool add = true;
-
-                    for (int k = 0; k < pI.Count; k++)
-                    {
-                        if ((pI[k].startPt.DistanceToSquared(newPI.startPt) < startTol * startTol && pI[k].endPt.DistanceToSquared(newPI.endPt) < startTol * startTol) ||
-                            (pI[k].startPt.DistanceToSquared(newPI.endPt) < startTol * startTol && pI[k].endPt.DistanceToSquared(newPI.startPt) < startTol * startTol))
-                        {
-                            add = false;
-                            break;
-                        }
-                    }
-
-                    if (add)
-                    {
-                        pI.Add(newPI);
-
-                        phaseIcrvs.Add(newPI.pLine);
-
-                        CorrectNode(ref nodes, newPI.startPt, tol, out bool bol);
-                        CorrectNode(ref nodes, newPI.endPt, tol, out bol);
-
-                        plToBc[i] = true;
-
                     }
                 }
             }
 
-            
 
             // Finding the relevant local max vonMises points
-            
+
             for (int i = 0; i < pI.Count; i++)
             {
                 pI[i].locMaxPts = FindLocalMaxPtsOnCurve(pI[i].pLine, dAreas, nAreas);
@@ -299,6 +273,8 @@ namespace Krill.Grasshopper
                 }
             }
 
+            if (CancellationToken.IsCancellationRequested)
+                return;
             //////////////////////////////////////////////////////////////////////////////////////////////////////
             // Check if one of the first curves intersect a phaseI curve
 
@@ -347,6 +323,8 @@ namespace Krill.Grasshopper
                 }
             }
 
+            if (CancellationToken.IsCancellationRequested)
+                return;
             ////////////////////////////////////////////////////////////////////////////////////////////////
             // Constructing new load paths from max loc pts and intersections
 
@@ -382,6 +360,10 @@ namespace Krill.Grasshopper
                 }               
             }
 
+
+            if (CancellationToken.IsCancellationRequested)
+                return;
+            // Checking the new curves for intersections
             for (int i = 0; i < pI.Count; i++)
             {
                 for (int j = 0; j < pI[i].potIIpls.Count; j++)
@@ -389,72 +371,110 @@ namespace Krill.Grasshopper
                     Curve currentPotIIcrv = PolylineToCurve(pI[i].potIIpls[j], 1);
                     Point3d currentLocMaxPt = pI[i].potIIplsStartPt[j];
 
-                    bool intersect = false;
+                    bool connectLocalMax = false;   // Or as a previous line
+
+                    List<Tuple<double, int, IntersectionEvent>> intProp = new List<Tuple<double, int, IntersectionEvent>>();
 
                     for (int k = 0; k < pI.Count; k++)
                     {
+                        // Not searching against the curve that it originates from
                         if (k == i)
                             continue;
 
                         CurveIntersections crvInter = Intersection.CurveCurve(pI[k].pLineCurve, currentPotIIcrv, intTol, 0.0);
+
                         if (crvInter != null && crvInter.Count > 0)
                         {
                             IntersectionEvent intEvent = crvInter[0];
-
-                            bool connectLocalMax = false;   // Or as a previous line
-
-                            for (int kk = 0; kk < pI[k].interTvals.Count; kk++)
-                            {
-                                Point3d pt = pI[k].pLine.PointAt(pI[k].interTvals[kk]);
-                                if (intEvent.PointA.DistanceToSquared(pt) < tol * tol)
-                                {
-                                    Line l = new Line(currentLocMaxPt, pt);
-                                    truss.Add(l);
-                                    connectLocalMax = true;
-                                    intersect = true;
-                                    phaseIIcrvs.Add(pI[i].potIIpls[j]);
-                                    CorrectNode(ref nodes, pt, tol, out bool bol);
-                                }
-                            }
-
-                            if (!connectLocalMax)
-                            {
-                                if (pI[k].startPt.DistanceToSquared(intEvent.PointA) > tol * tol &&
-                                    pI[k].endPt.DistanceToSquared(intEvent.PointA) > tol * tol)
-                                {
-                                    Polyline pl = pI[i].potIIpls[j];
-                                    List<Point3d> cutPlPts = new List<Point3d>();
-
-                                    for (int ii = 0; ii < intEvent.ParameterB; ii++)
-                                        cutPlPts.Add(pl[ii]);
-                                    
-                                    Polyline cutPl = new Polyline(cutPlPts);
-                                    Line l = new Line(currentLocMaxPt, intEvent.PointA);
-
-                                    if (cutPl.Length < l.Length * 1.15)
-                                    {
-                                        pI[k].interTvals.Add(intEvent.ParameterA);
-
-                                        PhaseII newPII = new PhaseII(pl, i);
-                                        newPII.startPt = currentLocMaxPt;
-                                        newPII.endPt = intEvent.PointA;
-
-                                        CorrectNode(ref nodes, intEvent.PointA, tol, out bool bol);
-
-                                        pII.Add(newPII);
-
-                                        truss.Add(l);
-                                        intersect = true;
-
-                                        phaseIIcrvs.Add(pI[i].potIIpls[j]);
-                                    }
-                                }                                
-                            }
+                            intProp.Add(new Tuple<double, int, IntersectionEvent>(intEvent.ParameterB, k, intEvent));
                         }
                     }
 
+                    // At least one intersection is found, the first one is relevant, not the rest
+                    if (intProp.Count > 0)
+                    {
+                        intProp = intProp.OrderBy(x => x.Item1).ToList();
+
+                        Polyline potPl = null;
+                        int indTval = 0;
+
+                        // Kolla vinkeln så att den skapade linjen går ungefär i samma rikning som polylinen
+                        for (int k = 0; k < intProp.Count; k++)
+                        {
+                            potPl = CutPolyline(pI[i].potIIpls[j], intProp[k].Item1);
+                            if (!potPl.IsValid)
+                                continue;
+                            Vector3d dirPl = potPl.Last - potPl.First;
+                            dirPl.Unitize();
+                            Vector3d dirLn = intProp[k].Item3.PointA - potPl.First;
+                            dirLn.Unitize();
+
+                            double cos = Math.Abs(dirPl * dirPl);
+
+                            if (cos > 0.5)
+                            {
+                                indTval = k;
+                                break;
+                            }
+                        }
+                        Polyline curPl = CutPolyline(pI[i].potIIpls[j], intProp[indTval].Item1);
+                        pI[i].potIIpls[j] = curPl;
+
+                        if (!curPl.IsValid)
+                            continue;
+
+                        int ind = intProp[indTval].Item2; // Index of the pI curve that it intersects with
+                        Point3d intPtA = intProp[indTval].Item3.PointA;
+                        double paramA = intProp[indTval].Item3.ParameterA;
+
+                        // Checking if it connects to a local maximum or another kink in the curve
+                        for (int k = 0; k < pI[ind].interTvals.Count; k++)
+                        {
+                            Point3d pt = pI[ind].pLine.PointAt(pI[ind].interTvals[k]);
+
+                            if (intPtA.DistanceToSquared(pt) < tol * tol)
+                            {
+                                Line l = new Line(currentLocMaxPt, pt);
+                                truss.Add(l);
+                                connectLocalMax = true;
+                                CorrectNode(ref nodes, pt, tol, out bool bol);
+
+                                phaseIIcrvs.Add(curPl);
+
+                                break;
+                            }
+                        }
+
+                        if (!connectLocalMax)
+                        {
+                            Line l = new Line(currentLocMaxPt, intPtA);
+
+                            if (pI[ind].startPt.DistanceToSquared(intPtA) > tol * tol &&
+                                pI[ind].endPt.DistanceToSquared(intPtA) > tol * tol &&
+                                (curPl.Length - offsetTol) < l.Length * 1.25)
+                            {
+                                pI[ind].interTvals.Add(paramA);
+
+                                PhaseII newPII = new PhaseII(curPl, i, ind);
+                                newPII.startPt = currentLocMaxPt;
+                                newPII.endPt = intPtA;
+
+                                newPII.normalAtEnd = Vector3d.CrossProduct(pI[ind].pLineCurve.TangentAt(paramA), l.Direction);
+                                //newPII.normalAtEnd = Vector3d.CrossProduct(pI[k].pLineCurve.TangentAt(intEvent.ParameterA), currentPotIIcrv.TangentAt(intEvent.ParameterB));
+
+                                CorrectNode(ref nodes, intPtA, tol, out bool bol);
+
+                                pII.Add(newPII);
+
+                                truss.Add(l);
+
+                                phaseIIcrvs.Add(newPII.pLine);
+                            }
+                        }
+
+                    }
                     // If it does not intersect anything but connects in a new way to a BC
-                    if (!intersect)
+                    else
                     {
                         foreach (Mesh dArea in dAreas)
                         {
@@ -474,36 +494,110 @@ namespace Krill.Grasshopper
                 }
             }
 
+            if (CancellationToken.IsCancellationRequested)
+                return;
+            // New lines from intersection points, but only in the normal direction (normal is not the correct word)
+            // The direction that is perpendicular to the tangents of both curves at the intersection
+            for (int i = 0; i < pII.Count; i++)
+            {
+                Vector3d[] dirs = new Vector3d[2];
+                dirs[0] = pII[i].normalAtEnd;
+                dirs[1] = -dirs[0];
+
+                for (int j = 0; j < dirs.Length; j++)
+                {
+                    LoadPathCurve lPath = new LoadPathCurve(post.mask, pII[i].endPt, dirs[j], post.princpDir, post.princpStress);
+                    lPath.ConstructLoadPath(scaleDelta, true);
+
+                    //phaseIIcrvs.Add(lPath.loadPath);
+
+                    if (!lPath.loadPath.IsValid)
+                        continue;
+
+                    Curve curCrv = PolylineToCurve(lPath.loadPath, 1);
+
+                    List<Tuple<double, int, IntersectionEvent>> intProp = new List<Tuple<double, int, IntersectionEvent>>();
+
+                    for (int k = 0; k < pI.Count; k++)
+                    {
+                        if (k == pII[i].indPIstart || k == pII[i].indPIend)
+                            continue;
+
+                        CurveIntersections crvInter = Intersection.CurveCurve(pI[k].pLineCurve, curCrv, intTol, 0.0);
+                        if (crvInter != null && crvInter.Count > 0)
+                        {
+                            IntersectionEvent intEvent = crvInter[0];
+                            intProp.Add(new Tuple<double, int, IntersectionEvent>(intEvent.ParameterB, k, intEvent));
+                        }                    
+                    }
+
+                    if (intProp.Count > 0)
+                    {
+                        intProp = intProp.OrderBy(x => x.Item1).ToList();
+
+                        int ind = intProp[0].Item2; // Index of the pI curve that it intersects with
+                        Point3d intPtA = intProp[0].Item3.PointA;
+
+                        Point3d pt = CorrectNode(ref nodes, intPtA, tol, out bool alreadyExists);
+                        if (alreadyExists)
+                        {
+                            Line l = new Line(pII[i].endPt, pt);
+                            if (l.IsValid)
+                                truss.Add(l);
+                        }
+                    }
+                }
+            }
+
+
+
+            if (CancellationToken.IsCancellationRequested)
+                return;
             // Check if potII curves intersect
             for (int i = 0; i < pI.Count; i++)
             {
                 for (int j = 0; j < pI[i].potIIpls.Count; j++)
                 {
+                    // Validity check for the polyline
+                    if (!pI[i].potIIpls[j].IsValid)
+                        continue;
+
                     Curve currentIIcrv = PolylineToCurve(pI[i].potIIpls[j], 1);
+
+                    List<Tuple<double, int, IntersectionEvent>> intProp = new List<Tuple<double, int, IntersectionEvent>>();
 
                     for (int k = 0; k < pII.Count; k++)
                     {
-                        if (i == pII[k].indPI)
+                        if (i == pII[k].indPIstart)
                             continue;
 
                         CurveIntersections crvInter = Intersection.CurveCurve(pII[k].pLineCurve, currentIIcrv, intTol, 0.0);
                         if (crvInter != null && crvInter.Count > 0)
                         {
                             IntersectionEvent intEvent = crvInter[0];
-
-                            Point3d sPt = pI[i].potIIplsStartPt[j];
-                            Point3d ePt;
-
-                            // Does not create a new node on pII curves, instead connects to closest end point
-                            if (intEvent.PointA.DistanceToSquared(pII[k].startPt) < intEvent.PointA.DistanceToSquared(pII[k].endPt))
-                                ePt = pII[k].startPt;
-                            else
-                                ePt = pII[k].endPt;
-                            
-                            Line l = new Line(sPt, ePt);
-                            truss.Add(l);
-                            //phaseIIcrvs.Add(pI[i].potIIpls[j]);
+                            intProp.Add(new Tuple<double, int, IntersectionEvent>(intEvent.ParameterB, k, intEvent));
                         }
+                    }
+
+                    if (intProp.Count > 0)
+                    {
+                        intProp = intProp.OrderBy(x => x.Item1).ToList();
+
+                        int ind = intProp[0].Item2; // Index of the pII curve that it intersects with
+                        Point3d intPtA = intProp[0].Item3.PointA;
+
+                        Point3d sPt = pI[i].potIIplsStartPt[j];
+                        Point3d ePt;
+
+                        // Does not create a new node on pII curves, instead connects to closest end point
+                        if (intPtA.DistanceToSquared(pII[ind].startPt) < intPtA.DistanceToSquared(pII[ind].endPt))
+                            ePt = pII[ind].startPt;
+                        else
+                            ePt = pII[ind].endPt;
+
+                        Line l = new Line(sPt, ePt);
+                        truss.Add(l);
+                        phaseIIcrvs.Add(pI[i].potIIpls[j]);
                     }
                 }
             }
@@ -528,6 +622,8 @@ namespace Krill.Grasshopper
                 }
             }
 
+            if (CancellationToken.IsCancellationRequested)
+                return;
             /////////////////////////////////////////////////////////////////////////////////////////
             // Phase III (handeling the beam case)
             for (int i = 0; i < dAreas.Count; i++)
@@ -575,44 +671,54 @@ namespace Krill.Grasshopper
                     LoadPathCurve lPath = new LoadPathCurve(post.mask, startPt, pIIIstartDirs[j], post.princpDir, post.princpStress);
                     lPath.ConstructLoadPath(scaleDelta, false);
 
-                    if (lPath.loadPath.IsValid)
+                    if (!lPath.loadPath.IsValid)
+                        continue;
+
+
+                    phaseIIcrvs.Add(lPath.loadPath);
+
+                    Curve potIII = PolylineToCurve(lPath.loadPath, 1);
+
+                    List<Tuple<double, Point3d>> tValsAndPts = new List<Tuple<double, Point3d>>();
+
+                    for (int ii = 0; ii < pI.Count; ii++)
                     {
-                        phaseIIcrvs.Add(lPath.loadPath);
-
-                        Curve potIII = PolylineToCurve(lPath.loadPath, 1);
-
-                        List<Tuple<double, Point3d>> L = new List<Tuple<double, Point3d>>();
-
-                        for (int ii = 0; ii < pI.Count; ii++)
+                        if (potIII.ClosestPoint(pI[ii].endPt, out double t, intTol))
                         {
-                            if (potIII.ClosestPoint(pI[ii].endPt, out double t, intTol))
-                            {
-                                L.Add(new Tuple<double, Point3d>(t, pI[ii].endPt));
-                            }
+                            tValsAndPts.Add(new Tuple<double, Point3d>(t, pI[ii].endPt));
                         }
+                    }
 
-                        List<Point3d> pts = new List<Point3d>();
-
-                        if (L.Count > 1)
+                    for (int ii = 0; ii < pII.Count; ii++)
+                    {
+                        if (potIII.ClosestPoint(pII[ii].endPt, out double t, intTol))
                         {
-                            L = L.OrderBy(x => x.Item1).ToList();
-
-                            for (int ii = 0; ii < L.Count; ii++)
-                            {
-                                pts.Add(L[ii].Item2);
-                            }
+                            tValsAndPts.Add(new Tuple<double, Point3d>(t, pII[ii].endPt));
                         }
+                    }
 
-                        if (pts.Count > 1)
+                    List<Point3d> pts = new List<Point3d>();
+
+                    if (tValsAndPts.Count > 1)
+                    {
+                        tValsAndPts = tValsAndPts.OrderBy(x => x.Item1).ToList();
+
+                        for (int ii = 0; ii < tValsAndPts.Count; ii++)
                         {
-                            for (int ii = 0; ii < pts.Count - 1; ii++)
-                            {
-                                Line l = new Line(pts[ii], pts[ii + 1]);
-                                truss.Add(l);
-                            }
+                            pts.Add(tValsAndPts[ii].Item2);
                         }
-                    }                        
+                    }
+
+                    if (pts.Count > 1)
+                    {
+                        for (int ii = 0; ii < pts.Count - 1; ii++)
+                        {
+                            Line l = new Line(pts[ii], pts[ii + 1]);
+                            truss.Add(l);
+                        }
+                    }
                 }
+
             }
 
             //localMax = nodes;
@@ -656,13 +762,16 @@ namespace Krill.Grasshopper
             public Curve pLineCurve;
             public Point3d startPt;
             public Point3d endPt;
-            public int indPI;
+            public int indPIstart;
+            public int indPIend;
+            public Vector3d normalAtEnd;
 
-            public PhaseII(Polyline loadPath, int indPhaseIcrv)
+            public PhaseII(Polyline loadPath, int indPhaseIcrv, int indSecondPhaseIcrv)
             {
                 pLine = loadPath;
                 pLineCurve = PolylineToCurve(pLine, 1);
-                indPI = indPhaseIcrv;
+                indPIstart = indPhaseIcrv;
+                indPIend = indSecondPhaseIcrv;
             }
         }
 
@@ -745,11 +854,11 @@ namespace Krill.Grasshopper
                         pStress.X = Math.Abs(pStress.X);
                         pStress.Y = Math.Abs(pStress.Y);
                         pStress.Z = Math.Abs(pStress.Z);
-                        double factor = 0.05;
+                        double factor = 0.1;
 
                         double maxVal = pStress.MaximumCoordinate;
 
-                        if (maxVal == pStress.X)
+                        if (pStress.X > pStress.Y && pStress.X > pStress.Z)
                         {
                             if (pStress.Y > maxVal * factor || pStress.Z > maxVal * factor)
                             {
@@ -757,8 +866,7 @@ namespace Krill.Grasshopper
                                 ptsOnCrv.Add(polyline[i]);
                             }
                         }
-
-                        if (maxVal == pStress.Y)
+                        else if (pStress.Y > pStress.Z)
                         {
                             if (pStress.X > maxVal * factor || pStress.Z > maxVal * factor)
                             {
@@ -766,8 +874,7 @@ namespace Krill.Grasshopper
                                 ptsOnCrv.Add(polyline[i]);
                             }
                         }
-
-                        if (maxVal == pStress.Z)
+                        else
                         {
                             if (pStress.Y > maxVal * factor || pStress.X > maxVal * factor)
                             {
@@ -1064,7 +1171,80 @@ namespace Krill.Grasshopper
             Polyline cutPl = new Polyline(pts);
             return cutPl;
         }
-       
+
+        private bool FindRelevantIntersection(ref Polyline pLine, List<Curve> crvsA, int[] indSkip, out int indIntCrv, out IntersectionEvent intEvent)
+        {
+            Curve crvB = PolylineToCurve(pLine, 1);
+
+            List<Tuple<double, int, IntersectionEvent>> intProp = new List<Tuple<double, int, IntersectionEvent>>();
+
+            for (int i = 0; i < crvsA.Count; i++)
+            {
+                // Not searching against the curve with indicated index
+                bool skip = false;
+                for (int j = 0; j < indSkip.Length; j++)
+                {
+                    if (i == indSkip[j])
+                    {
+                        skip = true;
+                        break;
+                    }
+                }
+                if (skip)
+                    continue;
+
+                CurveIntersections crvInter = Intersection.CurveCurve(crvsA[i], crvB, intTol, 0.0);
+
+                if (crvInter != null && crvInter.Count > 0)
+                {
+                    IntersectionEvent inter = crvInter[0];
+                    intProp.Add(new Tuple<double, int, IntersectionEvent>(inter.ParameterB, i, inter));
+                }
+            }
+
+            // At least one intersection is found, the first one is relevant, not the rest
+            if (intProp.Count > 0)
+            {
+                intProp = intProp.OrderBy(x => x.Item1).ToList();
+
+                Polyline potPl = null;
+                int indTval = 0;
+
+                // Kolla vinkeln så att den skapade linjen går ungefär i samma rikning som polylinen
+                for (int i = 0; i < intProp.Count; i++)
+                {
+                    potPl = CutPolyline(pLine, intProp[i].Item1);
+                    if (!potPl.IsValid)
+                        continue;
+
+                    Vector3d dirPl = potPl.Last - potPl.First;
+                    dirPl.Unitize();
+                    Vector3d dirLn = intProp[i].Item3.PointA - potPl.First;
+                    dirLn.Unitize();
+
+                    double cos = Math.Abs(dirPl * dirPl);
+
+                    if (cos > 0.5)
+                    {
+                        indTval = i;
+                        break;
+                    }
+                }
+
+                if (potPl.IsValid)
+                {
+                    pLine = potPl;
+                    indIntCrv = intProp[indTval].Item2;
+                    intEvent = intProp[indTval].Item3;
+                    return true;
+                }
+            }
+
+            indIntCrv = -1;
+            intEvent = null;
+            return false;
+        }
+
         // Old method, not used anymore
         private void FindLocalMaxPts(double factorOfMaxStress, double horizon, Voxels2d<double> vonMises, List<Curve> dCrvs, List<Curve> nCrvs, Voxels2d<Vector3d> principalStress)
         {
