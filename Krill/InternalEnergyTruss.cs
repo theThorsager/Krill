@@ -48,6 +48,9 @@ namespace Krill
 
         public bool mechanisim { get; private set; } = false;
 
+        double objectiveValue = double.MaxValue;
+        double[] realGradient = null;
+
         public List<double> Forces()
         {
             return eps.Zip(As, (e, a) => e * a * E).ToList();
@@ -100,6 +103,35 @@ namespace Krill
             TtK2 = new DenseMatrix(6, 2);
             TtK3 = new DenseMatrix(6, 2);
             TtKT1 = new DenseMatrix(6, 6);
+
+            realGradient = new double[nVariables];
+        }
+
+        public double ArmijoStep(double[] gradient, ref double a, out double stepLength)
+        {
+            double c1 = 0.001;
+
+            double initialValue = objectiveValue;
+            double dot = Vector.DotProduct(nVariables, gradient, gradient);
+
+            double newValue, expectedValue;
+            a *= 2.2;
+            double lastA = 0;
+            do
+            {
+                a *= 0.5;
+                this.ApplyGradient(gradient, a - lastA);
+                this.SetData(null);
+                lastA = a;
+                newValue = ComputeValue();
+
+                expectedValue = initialValue - c1 * a * dot;
+
+                stepLength = a * dot;
+
+            } while (newValue > expectedValue && stepLength > 1e-6);
+
+            return newValue;
         }
 
         public void LockZ()
@@ -195,6 +227,7 @@ namespace Krill
         }
         public void ConstrainToDirections(double[] gradient)
         {
+            Vector.Copy(gradient, realGradient);
             for (int i = 0; i < nVariables; i += 3)
             {
                 double x = fixedDirections[i];
@@ -331,18 +364,12 @@ namespace Krill
 
         double strainFactor = 10;
 
-        public double ComputeValueAndGradient(ref double[] gradient)
+        public void ComputeValueAndGradient(ref double[] gradient)
         {
             if (nVariables == nlockedDOF)
             {
                 gradient = new double[nVariables];
-                return 0;
-            }
-            us = Displacments();
-            for (int i = 0; i < nElements; i++)
-            {
-                double strain = Strain(i);
-                eps[i] = strain;
+                return;
             }
 
             for (int i = 0; i < nVariables; i++)
@@ -352,8 +379,6 @@ namespace Krill
                 else
                     gradient[i] = ComputeDerivative(i);
             }
-
-            return Compute(); 
         }
 
         private double Compute()
@@ -375,6 +400,7 @@ namespace Krill
                 res += factor * E * AsE[i] * lsE[i] * ep * ep;
             }
 
+            objectiveValue = res;
             return res;
         }
 

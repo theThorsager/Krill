@@ -105,6 +105,7 @@ namespace Krill.Grasshopper
             energyTruss.SetData(null);
             var gradient = new double[energyTruss.nVariables];
             double energy = energyTruss.ComputeValue();
+            double stepLength = double.MaxValue;
             for (int i = 0; i < n; i++)
             {
                 if (energyTruss.mechanisim || double.IsNaN(energy))
@@ -114,10 +115,12 @@ namespace Krill.Grasshopper
                     break;
                 }
 
-                energy = energyTruss.ComputeValueAndGradient(ref gradient);
+                energyTruss.ComputeValueAndGradient(ref gradient);
                 energyTruss.ConstrainToDirections(gradient);
-                energyTruss.ApplyGradient(gradient, a);
-                energyTruss.SetData(null);
+                energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength);
+                // Steplength is the square distance moved ish (as if everything is thought of as one vector)
+                if (stepLength < 1e-6)
+                    break;
             }
 
 
