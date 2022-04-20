@@ -64,8 +64,9 @@ namespace Krill.Grasshopper
             truss.mask = meshToPoints.voxels;
 
             BoxSDF sdf = new BoxSDF(meshToPoints.voxels);
+            sdf.ConstructSDF();
 
-            Vector3d v = sdf.BiggestBox(pt);
+            Vector3d v = sdf.BoxValueAt(pt);
             BoundingBox bbox = new BoundingBox(pt - v * 0.5, pt + 0.5 * v);
 
             DA.SetData(0, bbox);

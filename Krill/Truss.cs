@@ -161,7 +161,7 @@ namespace Krill
             this.mask = mask;
 
             boxSDF = new BoxSDF(mask);
-            boxSDF.ConstructSDF3();
+            boxSDF.ConstructSDF();
 
             // old
             //for (int i = 0; i < model.Nodes.Count; ++i)

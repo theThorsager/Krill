@@ -59,7 +59,7 @@ namespace Krill.Grasshopper
             meshToPoints.RefineBoundaries();
 
             Krill.BoxSDF sdf = new BoxSDF(meshToPoints.voxels);
-            sdf.ConstructSDF3();
+            sdf.ConstructSDF();
 
             //truss.ConstructSDF2();
 

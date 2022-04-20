@@ -72,7 +72,7 @@ namespace Krill.Grasshopper
 
             var sdfTruss = new SDFTruss();
             var SDF = new BoxSDF(linModel.Value.mask);
-            SDF.ConstructSDF3();
+            SDF.ConstructSDF();
 
             sdfTruss.Init(truss.Value, SDF, f);
 
