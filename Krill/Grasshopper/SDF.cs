@@ -23,9 +23,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddMeshParameter("mesh", "m", "", GH_ParamAccess.item);
-            pManager.AddNumberParameter("d", "d", "", GH_ParamAccess.item);
-            pManager.AddLineParameter("l", "l", "", GH_ParamAccess.item, Line.Unset);
+            pManager.AddParameter(new Param.LinearPeridynamicsModelParam());
         }
 
         /// <summary>
@@ -33,9 +31,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddPointParameter("points", "pts", "", GH_ParamAccess.list);
-            pManager.AddVectorParameter("box", "b", "", GH_ParamAccess.list); 
-            pManager.AddVectorParameter("union", "u", "", GH_ParamAccess.list);
+            pManager.AddParameter(new Param.BoxSDFParam());
         }
 
         /// <summary>
@@ -44,39 +40,16 @@ namespace Krill.Grasshopper
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            Mesh mesh = null;
-            DA.GetData(0, ref mesh);
-            double d = -1;
-            DA.GetData(1, ref d);
+            Param.LinearPeridynamicsModelGoo modelGoo = null;
+            DA.GetData(0, ref modelGoo);
 
-            if (mesh is null)
+            if (modelGoo?.Value?.mask is null)
                 return;
 
-            MeshToPoints meshToPoints = new MeshToPoints(mesh, d, 2);
-
-            meshToPoints.FillBoundaryValues();
-            meshToPoints.FillInternalValues();
-            meshToPoints.RefineBoundaries();
-
-            Krill.BoxSDF sdf = new BoxSDF(meshToPoints.voxels);
+            Krill.BoxSDF sdf = new BoxSDF(modelGoo.Value.mask);
             sdf.ConstructSDF();
 
-            //truss.ConstructSDF2();
-
-            Line l = Line.Unset;
-            DA.GetData(2, ref l);
-            var boxes = new List<Vector3d>();
-            if (l.IsValid)
-            {
-                for (int i = 0; i < 100; i++)
-                {
-                    boxes.Add(sdf.BoxValueAt(l.PointAt(i / (double)99)));
-                }
-            }
-
-            DA.SetDataList(0, sdf.mask.GetPointsNotAt(0));
-            DA.SetDataList(1, sdf.SDF.GetValues(sdf.mask));
-            DA.SetDataList(2, boxes);
+            DA.SetData(0, new Param.BoxSDFGoo(sdf));
         }
 
         /// <summary>

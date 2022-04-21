@@ -26,6 +26,8 @@ namespace Krill.Grasshopper
         {
             pManager.AddParameter(new Param.TrussGeometryParam());
             pManager.AddParameter(new Param.DiscreteBoundaryConditionParam(), "BCs", "BCs", "", GH_ParamAccess.list);
+            pManager.AddParameter(new Param.BoxSDFParam());
+            pManager[2].Optional = true;
             pManager.AddIntegerParameter("n", "n", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("alpha", "a", "", GH_ParamAccess.item);
             pManager.AddBooleanParameter("lockZ", "lockZ", "", GH_ParamAccess.item);
@@ -41,6 +43,7 @@ namespace Krill.Grasshopper
             pManager.AddVectorParameter("disp", "d", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("strains", "s", "", GH_ParamAccess.list);
             pManager.AddLineParameter("lines", "l", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("areas", "a", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -56,20 +59,24 @@ namespace Krill.Grasshopper
             DA.GetDataList(1, bcsGoo);
             var BCs = bcsGoo.Select(x => x.Value);
 
+            Param.BoxSDFGoo boxSDFGoo = null;
+            DA.GetData(2, ref boxSDFGoo);
+
             int n = 1;
-            DA.GetData(2, ref n);
+            DA.GetData(3, ref n);
 
             double a = 1;
-            DA.GetData(3, ref a);
+            DA.GetData(4, ref a);
 
             bool lockZ = false;
-            DA.GetData(4, ref lockZ);
+            DA.GetData(5, ref lockZ);
 
             if (truss?.Value is null)
                 return;
 
             var energyTruss = new InternalEnergyTruss();
             energyTruss.Init(truss.Value);
+            energyTruss.SDF = boxSDFGoo?.Value;
             bool first = true;
             foreach (var bc in BCs)
             {
@@ -104,6 +111,7 @@ namespace Krill.Grasshopper
 
             energyTruss.SetData(null);
             var gradient = new double[energyTruss.nVariables];
+            var gradientA = new double[energyTruss.nElements];
             double energy = energyTruss.ComputeValue();
             double stepLength = double.MaxValue;
             for (int i = 0; i < n; i++)
@@ -115,9 +123,11 @@ namespace Krill.Grasshopper
                     break;
                 }
 
-                energyTruss.ComputeValueAndGradient(ref gradient);
+                energyTruss.ComputeGradient(ref gradient);
+                energyTruss.ComputeGradientA(ref gradientA);
                 energyTruss.ConstrainToDirections(gradient);
-                energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength);
+                energyTruss.ConstrainGradientA(gradientA);
+                energy = energyTruss.ArmijoStep(gradient, gradientA, ref a, out stepLength);
                 // Steplength is the square distance moved ish (as if everything is thought of as one vector)
                 if (stepLength < 1e-6)
                     break;
@@ -148,6 +158,7 @@ namespace Krill.Grasshopper
             DA.SetDataList(2, disp);
             DA.SetDataList(3, energyTruss.Forces());
             DA.SetDataList(4, lines);
+            DA.SetDataList(5, energyTruss.Areas());
         }
 
         /// <summary>

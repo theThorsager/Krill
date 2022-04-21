@@ -21,6 +21,7 @@ namespace Krill
         public double[] xs = null;
 
         public double[] eps = null;
+        double[] dAs = null;
         double[] dls = null;
 
         public double[] us = null;
@@ -50,10 +51,19 @@ namespace Krill
 
         double objectiveValue = double.MaxValue;
         double[] realGradient = null;
+        double[] realGradientA = null;
+
+        public BoxSDF SDF = null;
+        public double[] areaFactor = null;
 
         public List<double> Forces()
         {
-            return eps.Zip(As, (e, a) => e * a * E).ToList();
+            return eps.Zip(Areas(), (e, a) => e * a * E).ToList();
+        }
+
+        public List<double> Areas()
+        {
+            return areaFactor.Zip(As, (e, a) => e * a).ToList();
         }
 
         public InternalEnergyTruss()
@@ -69,17 +79,13 @@ namespace Krill
             nVariables = xs.Length;
             nElements = connections.Length;
 
-            // Need to apply f somehow
             f = new double[nVariables];
-            //for (int i = 0; i < f.Length; i++)
-            //{
-            //    f[i] = (i + 1) % 3 == 0 ? -1 : 0;
-            //}
 
             this.fyd = fyd;
             this.E = E;
 
             ls = new double[nElements];
+            dAs = new double[nElements];
             dls = new double[nElements];
             eps = new double[nElements];
 
@@ -105,14 +111,17 @@ namespace Krill
             TtKT1 = new DenseMatrix(6, 6);
 
             realGradient = new double[nVariables];
+            realGradientA = new double[nElements];
+            areaFactor = Vector.Create(nElements, 1.0);
         }
 
-        public double ArmijoStep(double[] gradient, ref double a, out double stepLength)
+        public double ArmijoStep(double[] gradient, double[] gradientA, ref double a, out double stepLength)
         {
             double c1 = 0.001;
 
             double initialValue = objectiveValue;
-            double dot = Vector.DotProduct(nVariables, gradient, gradient);
+            double dot = Vector.DotProduct(nVariables, gradient, realGradient);
+            dot += Vector.DotProduct(nElements, gradientA, realGradientA);
 
             double newValue, expectedValue;
             a *= 2.2;
@@ -121,6 +130,7 @@ namespace Krill
             {
                 a *= 0.5;
                 this.ApplyGradient(gradient, a - lastA);
+                this.ApplyGradientA(gradientA, a - lastA);
                 this.SetData(null);
                 lastA = a;
                 newValue = ComputeValue();
@@ -246,6 +256,22 @@ namespace Krill
                 }
             }
         }
+        public void ConstrainGradientA(double[] gradient)
+        {
+            Vector.Copy(gradient, realGradientA);
+            // Gradient projection for box support
+            for (int i = 0; i < nElements; i++)
+            {
+                double val = areaFactor[i];
+                double grad = gradient[i];
+
+                grad = Math.Min(1.0 - val,
+                            Math.Max(0.001 - val, 
+                                grad));
+
+                gradient[i] = grad;
+            }
+        }
         //public void ApplyBC(Containers.DiscreteBoundaryConditionDirechlet bcD)
         //{
         //    int i = FindPoint(bcD.pts);
@@ -328,6 +354,8 @@ namespace Krill
                 double z = xs[connections[i].Item2 * 3 + 2] - xs[connections[i].Item1 * 3 + 2];
                 double l = Math.Sqrt(x * x + y * y + z * z);
                 ls[i] = l;
+
+                this.As[i] = Area(i);
             }
 
             for (int i = 0; i < nExtraElements; i++)
@@ -345,6 +373,10 @@ namespace Krill
         public void ApplyGradient(double[] gradient, double factor = 1)
         {
             Vector.Add(nVariables, factor, gradient, xs, xs);
+        }
+        public void ApplyGradientA(double[] gradientA, double factor = 1)
+        {
+            Vector.Add(nElements, factor, gradientA, areaFactor, areaFactor);
         }
         public double ComputeValue()
         {
@@ -364,7 +396,7 @@ namespace Krill
 
         double strainFactor = 10;
 
-        public void ComputeValueAndGradient(ref double[] gradient)
+        public void ComputeGradient(ref double[] gradient)
         {
             if (nVariables == nlockedDOF)
             {
@@ -381,6 +413,26 @@ namespace Krill
             }
         }
 
+        public void ComputeGradientA(ref double[] gradient)
+        {
+            if (nVariables == nlockedDOF)
+            {
+                gradient = new double[nElements];
+                return;
+            }
+
+            for (int i = 0; i < nElements; i++)
+            {
+                //if (fixedVariable[i])
+                //    gradient[i] = 0;
+                //else
+                //    gradient[i] = ComputeDerivative(i);
+
+                gradient[i] = -ComputeDerivativeA(i);
+
+            }
+        }
+
         private double Compute()
         {
             double res = 0.0;
@@ -389,7 +441,7 @@ namespace Krill
             {
                 double factor = eps[i] < 0 ? 1 : strainFactor;
 
-                res += factor * E * As[i] * ls[i] * eps[i] * eps[i];
+                res += factor * E * areaFactor[i] * As[i] * ls[i] * eps[i] * eps[i];
             }
 
             for (int i = 0; i < nExtraElements; i++)
@@ -411,6 +463,9 @@ namespace Krill
             {
                 double dl = Dlength(i, dindex);
                 dls[i] = dl;
+
+                double dA = dArea(i, dindex);
+                dAs[i] = dA;
             }
 
             double[] dus = Ddisplacments(dindex);
@@ -423,19 +478,19 @@ namespace Krill
 
                 double dl = dls[i];
                 double deps = Dstrain(i, dindex, dl, dus);
-                double dA = 0; // E * A * deps / fyd;
+                double dA = dAs[i];
 
                 double factor = ep < 0 ? 1 : strainFactor;
 
 
                 res += factor *
-                    E * (2 * A * l * deps * ep + 
+                    areaFactor[i] * E * (2 * A * l * deps * ep + 
                     (dA * l + A * dl) * ep * ep);
             }
 
             for (int i = 0; i < nExtraElements; i++)
             {
-                double A = AsE[i];
+                double A = AsE[i];      // Will these areas change??
                 double l = lsE[i];
                 double ep = StrainE(i);
 
@@ -451,6 +506,164 @@ namespace Krill
             }
 
             return res;
+        }
+
+        private double ComputeDerivativeA(int dindex)
+        {
+            double res = 0.0;
+
+            double[] dus = DdisplacmentsA(dindex);
+
+            for (int i = 0; i < nElements; i++)
+            {
+                double A = As[i];
+                double l = ls[i];
+                double ep = eps[i];
+
+                double deps = DstrainA(i, dus);
+
+                double factor = ep < 0 ? 1 : strainFactor;
+
+
+                res += factor *
+                    E * A * l * ep * (ep + 2 * areaFactor[i] * deps);
+            }
+
+            //for (int i = 0; i < nExtraElements; i++)
+            //{
+            //    double A = AsE[i];      // Will these areas change??
+            //    double l = lsE[i];
+            //    double ep = StrainE(i);
+
+            //    double dl = DlengthE(i, dindex);
+            //    double dA = 0; // E * A * deps / fyd;
+            //    double deps = DstrainE(i, dindex, dl, dus, dA);
+
+            //    double factor = ep < 0 ? 1 : strainFactor;
+
+            //    res -= factor *
+            //        E * (2 * A * l * deps * ep +
+            //        (dA * l + A * dl) * ep * ep);
+            //}
+
+            return res;
+        }
+
+        private double Area(int i)
+        {
+            // Use average area of the different nodes
+
+            if (SDF is null)
+                return As[i];
+
+            int s = connections[i].Item1 * 3;
+            int e = connections[i].Item2 * 3;
+
+            var start = new Point3d(xs[s], xs[s + 1], xs[s + 2]);
+            var end = new Point3d(xs[e], xs[e + 1], xs[e + 2]);
+
+            var boxS = SDF.BoxValueAt(start);
+            var boxE = SDF.BoxValueAt(end);
+
+            var n = end - start;
+            n.Unitize();
+            n.X = Math.Abs(n.X);
+            n.Y = Math.Abs(n.Y);
+            n.Z = Math.Abs(n.Z);
+
+            double areaS = n.X * boxS.Y * boxS.Z + n.Y * boxS.X * boxS.Z + n.Z * boxS.X * boxS.Y;
+            double areaE = n.X * boxE.Y * boxE.Z + n.Y * boxE.X * boxE.Z + n.Z * boxE.X * boxE.Y;
+
+            return (areaS + areaE) * 0.5;
+        }
+
+        private double dArea(int i, int dindex)
+        {
+            // Use average area of the different nodes
+            if (SDF is null)
+                return 0.0;
+
+            if (!ElementConnectsToVariable(i, dindex))
+                return 0.0;
+
+            int s = connections[i].Item1 * 3;
+            int e = connections[i].Item2 * 3;
+
+            var start = new Point3d(xs[s], xs[s + 1], xs[s + 2]);
+            var end = new Point3d(xs[e], xs[e + 1], xs[e + 2]);
+
+            var boxS = SDF.BoxValueAt(start);
+            var boxE = SDF.BoxValueAt(end);
+
+            SDF.BoxGradientAt(start, out var dxs, out var dys, out var dzs);
+            SDF.BoxGradientAt(end, out var dxe, out var dye, out var dze);
+
+            var box = NodeConnectsToVariable(connections[i].Item1, dindex) ? start : end;
+
+            var n = end - start;
+            n.Unitize();
+
+            var dn = new Vector3d();
+            Vector3d dbox = Vector3d.Unset;
+
+            int off = dindex - connections[i].Item1 * 3;
+            switch (off)
+            {
+                case 0:
+                    dbox = dxs;
+                    dn.X = -(Math.Sign(n.X) - n.X * Math.Abs(n.X));
+                    dn.Y = n.X * Math.Abs(n.Y);
+                    dn.Z = n.X * Math.Abs(n.Z);
+                    break;
+                case 1:
+                    dbox = dys;
+                    dn.X = n.Y * Math.Abs(n.X);
+                    dn.Y = -(Math.Sign(n.Y) - n.Y * Math.Abs(n.Y));
+                    dn.Z = n.Y * Math.Abs(n.Z);
+                    break;
+                case 2:
+                    dbox = dzs;
+                    dn.X = n.Z * Math.Abs(n.X);
+                    dn.Y = n.Z * Math.Abs(n.Y);
+                    dn.Z = -(Math.Sign(n.Z) - n.Z * Math.Abs(n.Z));
+                    break;
+                default:
+                    off = dindex - connections[i].Item2 * 3;
+                    switch (off)
+                    {
+                        case 0:
+                            dbox = dxe;
+                            dn.X = (Math.Sign(n.X) - n.X * Math.Abs(n.X));
+                            dn.Y = -n.X * Math.Abs(n.Y);
+                            dn.Z = -n.X * Math.Abs(n.Z);
+                            break;
+                        case 1:
+                            dbox = dye;
+                            dn.X = -n.Y * Math.Abs(n.X);
+                            dn.Y = (Math.Sign(n.Y) - n.Y * Math.Abs(n.Y));
+                            dn.Z = -n.Y * Math.Abs(n.Z);
+                            break;
+                        case 2:
+                            dbox = dze;
+                            dn.X = -n.Z * Math.Abs(n.X);
+                            dn.Y = -n.Z * Math.Abs(n.Y);
+                            dn.Z = (Math.Sign(n.Z) - n.Z * Math.Abs(n.Z));
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+            }
+
+            n.X = Math.Abs(n.X);
+            n.Y = Math.Abs(n.Y);
+            n.Z = Math.Abs(n.Z);
+
+            double darea = dn.X * box.Y * box.Z + n.X * dbox.Y * box.Z + n.X * box.Y * dbox.Z +
+                           dn.Y * box.X * box.Z + n.Y * dbox.X * box.Z + n.Y * box.X * dbox.Z +
+                           dn.Z * box.X * box.Y + n.Z * dbox.X * box.Y + n.Z * box.X * dbox.Y;
+
+            return darea * 0.5;
         }
 
         private double[] Displacments()
@@ -525,6 +738,27 @@ namespace Krill
             Merge(res1, usa, res2);
             return res2;
         }
+
+        private double[] DdisplacmentsA(int dindex)
+        {
+            // Compute derivative of stiffness matrix
+            double[] res = new double[nVariables];
+            
+            ImplicitAssembleMultiply(DElementStiffnessA(dindex), dindex, us, res);
+
+            // Solve with precomputed LDL decomposition
+            double[] usa = new double[nlockedDOF];
+            double[] usb = new double[nVariables - nlockedDOF];
+            Split(res, usb, usa);
+
+            double[] res1 = new double[nVariables - nlockedDOF];
+            LDL.Solve(usb, res1);
+
+            double[] res2 = new double[nVariables];
+            Merge(res1, usa, res2);
+            return res2;
+        }
+
         private void Split<T>(T[] input, T[] a, T[] b)
         {
             for (int i = 0; i < input.Length; i++)
@@ -655,19 +889,44 @@ namespace Krill
             return TtKT1;
         }
 
+        private DenseMatrix DElementStiffnessA(int elementIndex)
+        {
+            TransformationMatrix(elementIndex);
+            DLocalElementStiffnessA(elementIndex);
+
+            T.Transpose(Tt);
+
+            TtK2.Clear();
+            TtKT1.Clear();
+
+            Tt.Multiply(dKelocal, TtK2);
+            TtK2.Multiply(T, TtKT1);
+
+            return TtKT1;
+        }
+
         private void DLocalElementStiffness(int dindex, int elementIndex)
         {
             int i = elementIndex;
-            double temp = -dls[i] * E * As[i] / (ls[i] * ls[i]); // dAs needs to be added
+            double temp = areaFactor[i] * (E * ls[i] * dAs[i] - dls[i] * E * As[i]) / (ls[i] * ls[i]);
             dKelocal[0, 0] = temp;
             dKelocal[0, 1] = -temp;
             dKelocal[1, 0] = -temp;
             dKelocal[1, 1] = temp;
         }
-        private void LocalElementStiffness(int elementIndex)
+        private void DLocalElementStiffnessA(int elementIndex)
         {
             int i = elementIndex;
             double temp = E * As[i] / ls[i];
+            Kelocal[0, 0] = temp;
+            Kelocal[0, 1] = -temp;
+            Kelocal[1, 0] = -temp;
+            Kelocal[1, 1] = temp;
+        }
+        private void LocalElementStiffness(int elementIndex)
+        {
+            int i = elementIndex;
+            double temp = areaFactor[i] * E * As[i] / ls[i];
             Kelocal[0, 0] = temp;
             Kelocal[0, 1] = -temp;
             Kelocal[1, 0] = -temp;
@@ -790,6 +1049,30 @@ namespace Krill
 
             double res = (dt * (uend- ustart) + t * (duend - dustart)) * l - t * (uend - ustart) * dlength;
             return res / (l * l);
+        }
+        private double DstrainA(int i, double[] dus)
+        {
+            var con = connections[i];
+            double l = ls[i];
+
+            Vector3d t = new Vector3d()
+            {
+                X = (xs[con.Item2 * 3] - xs[con.Item1 * 3]) / l,
+                Y = (xs[con.Item2 * 3 + 1] - xs[con.Item1 * 3 + 1]) / l,
+                Z = (xs[con.Item2 * 3 + 2] - xs[con.Item1 * 3 + 2]) / l
+            };
+
+            Vector3d dustart = new Vector3d(
+                dus[con.Item1 * 3 + 0],
+                dus[con.Item1 * 3 + 1],
+                dus[con.Item1 * 3 + 2]);
+            Vector3d duend = new Vector3d(
+                dus[con.Item2 * 3 + 0],
+                dus[con.Item2 * 3 + 1],
+                dus[con.Item2 * 3 + 2]);
+
+            double res = t * (duend - dustart) * l;
+            return res / l;
         }
         private double DstrainE(int i, int dindex, double dlength, double[] dus, double dA)
         {
