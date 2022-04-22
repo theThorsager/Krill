@@ -44,6 +44,7 @@ namespace Krill.Grasshopper
             pManager.AddNumberParameter("strains", "s", "", GH_ParamAccess.list);
             pManager.AddLineParameter("lines", "l", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("areas", "a", "", GH_ParamAccess.list);
+            pManager.AddGenericParameter("test", "t", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -113,6 +114,9 @@ namespace Krill.Grasshopper
             var gradient = new double[energyTruss.nVariables];
             var gradientA = new double[energyTruss.nElements];
             double energy = energyTruss.ComputeValue();
+            energy += energyTruss.ComputeUtilization();
+            double gamma = 1;
+            energy += energyTruss.ComputePenalty(gamma);
             double stepLength = double.MaxValue;
             for (int i = 0; i < n; i++)
             {
@@ -124,15 +128,20 @@ namespace Krill.Grasshopper
                 }
 
                 energyTruss.ComputeGradient(ref gradient);
+                energyTruss.ComputeUtilizationGradient(ref gradient);
+                energyTruss.ComputePeanaltynGradient(ref gradient, gamma);
                 energyTruss.ComputeGradientA(ref gradientA);
+                energyTruss.ComputeUtilizationGradientA(ref gradientA);
+                energyTruss.ComputePeanaltyGradientA(ref gradientA, gamma);
                 energyTruss.ConstrainToDirections(gradient);
                 energyTruss.ConstrainGradientA(gradientA);
-                energy = energyTruss.ArmijoStep(gradient, gradientA, ref a, out stepLength);
+                energy = energyTruss.ArmijoStep(gradient, gradientA, ref a, out stepLength, gamma);
                 // Steplength is the square distance moved ish (as if everything is thought of as one vector)
                 if (stepLength < 1e-6)
                     break;
-            }
 
+                //gamma *= 2;
+            }
 
             // Post processing
             var displac = energyTruss.us;
@@ -159,6 +168,7 @@ namespace Krill.Grasshopper
             DA.SetDataList(3, energyTruss.Forces());
             DA.SetDataList(4, lines);
             DA.SetDataList(5, energyTruss.Areas());
+            DA.SetDataList(6, energyTruss.endAreas);
         }
 
         /// <summary>

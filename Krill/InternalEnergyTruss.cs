@@ -29,6 +29,7 @@ namespace Krill
         double[] fb = null;
 
         double E;
+        double Esteel;
         double fyd;
 
         SparseLDL LDL = null;
@@ -55,6 +56,10 @@ namespace Krill
 
         public BoxSDF SDF = null;
         public double[] areaFactor = null;
+
+        public Tuple<double, double>[] endAreas = null;
+        public double[] capacityReduction = null;
+        public List<int>[] neighbours = null;
 
         public List<double> Forces()
         {
@@ -83,6 +88,7 @@ namespace Krill
 
             this.fyd = fyd;
             this.E = E;
+            this.Esteel = E * 5;    // Double check
 
             ls = new double[nElements];
             dAs = new double[nElements];
@@ -113,9 +119,14 @@ namespace Krill
             realGradient = new double[nVariables];
             realGradientA = new double[nElements];
             areaFactor = Vector.Create(nElements, 1.0);
+
+            endAreas = new Tuple<double, double>[nElements];
+            capacityReduction = Vector.Create(nVariables / 3, 1);
+
+            SetNeighbourList();
         }
 
-        public double ArmijoStep(double[] gradient, double[] gradientA, ref double a, out double stepLength)
+        public double ArmijoStep(double[] gradient, double[] gradientA, ref double a, out double stepLength, double gamma)
         {
             double c1 = 0.001;
 
@@ -134,6 +145,8 @@ namespace Krill
                 this.SetData(null);
                 lastA = a;
                 newValue = ComputeValue();
+                newValue += ComputeUtilization();
+                newValue += ComputePenalty(gamma);
 
                 expectedValue = initialValue - c1 * a * dot;
 
@@ -376,7 +389,7 @@ namespace Krill
         }
         public void ApplyGradientA(double[] gradientA, double factor = 1)
         {
-            Vector.Add(nElements, factor, gradientA, areaFactor, areaFactor);
+            Vector.Add(nElements, Math.Min(1, factor), gradientA, areaFactor, areaFactor);
         }
         public double ComputeValue()
         {
@@ -394,7 +407,67 @@ namespace Krill
             return Compute();
         }
 
+        public double ComputeUtilization()
+        {
+            if (nVariables == nlockedDOF)
+            {
+                return 0;
+            }
+
+            SetReductions();
+
+            return ComputeU();
+        }
+
+        public double ComputePenalty(double gamma)
+        {
+            // reinforcement area
+            if (nVariables == nlockedDOF)
+            {
+                return 0;
+            }
+
+            return ComputeP(gamma);
+        }
+
+        public void ComputeUtilizationGradient(ref double[] gradient)
+        {
+            if (nVariables == nlockedDOF)
+            {
+                return;
+            }
+
+            for (int i = 0; i < nVariables; i++)
+            {
+                if (fixedVariable[i])
+                { }
+                else
+                    gradient[i] += ComputeDerivativeU(i);
+            }
+        }
+
+        public void ComputePeanaltynGradient(ref double[] gradient, double gamma)
+        {
+            if (nVariables == nlockedDOF)
+            {
+                return;
+            }
+
+            for (int i = 0; i < nVariables; i++)
+            {
+                if (fixedVariable[i])
+                { }
+                else
+                    gradient[i] -= ComputeDerivativeP(i, gamma);
+            }
+        }
+
         double strainFactor = 10;
+        double maxStressT = 1;
+        double maxStressC = 1;
+
+        double utilizationFactor = 1;
+        double utilizationMargin = 0.1;
 
         public void ComputeGradient(ref double[] gradient)
         {
@@ -412,7 +485,32 @@ namespace Krill
                     gradient[i] = ComputeDerivative(i);
             }
         }
+        public void ComputeUtilizationGradientA(ref double[] gradient)
+        {
+            if (nVariables == nlockedDOF)
+            {
+                gradient = new double[nElements];
+                return;
+            }
 
+            for (int i = 0; i < nElements; i++)
+            {
+                gradient[i] -= ComputeUtilizationDerivativeA(i);
+            }
+        }
+        public void ComputePeanaltyGradientA(ref double[] gradient, double gamma)
+        {
+            if (nVariables == nlockedDOF)
+            {
+                gradient = new double[nElements];
+                return;
+            }
+
+            for (int i = 0; i < nElements; i++)
+            {
+                gradient[i] -= ComputePeanaltyDerivativeA(i, gamma);
+            }
+        }
         public void ComputeGradientA(ref double[] gradient)
         {
             if (nVariables == nlockedDOF)
@@ -423,12 +521,51 @@ namespace Krill
 
             for (int i = 0; i < nElements; i++)
             {
-                //if (fixedVariable[i])
-                //    gradient[i] = 0;
-                //else
-                //    gradient[i] = ComputeDerivative(i);
-
                 gradient[i] = -ComputeDerivativeA(i);
+            }
+        }
+        private void SetNeighbourList()
+        {
+            neighbours = new List<int>[nVariables / 3];
+            for (int i = 0; i < nVariables / 3; i++)
+            {
+                var curr = new List<int>();
+                neighbours[i] = curr;
+
+                for (int j = 0; j < nElements; j++)
+                {
+                    if (connections[j].Item1 == i || connections[j].Item2 == i)
+                    {
+                        curr.Add(j);
+                    }
+                }
+            }
+        }
+        private void SetReductions()
+        {
+            for (int i = 0; i < nVariables / 3; i++)
+            {
+                int countT = 0;
+                for (int j = 0; j < neighbours[i].Count; j++)
+                {
+                    int index = neighbours[i][j];
+                    double strain = eps[index];
+
+                    if (strain > 0 && areaFactor[index] > 0.01)
+                        countT++;
+                }
+                if (countT >= 2)
+                {
+                    capacityReduction[i] = 0.75;
+                }
+                else if (countT >= 1)
+                {
+                    capacityReduction[i] = 0.85;
+                }
+                else
+                {
+                    capacityReduction[i] = 1;
+                }
 
             }
         }
@@ -455,7 +592,169 @@ namespace Krill
             objectiveValue = res;
             return res;
         }
+        private double ComputeU()
+        {
+            double res = 0.0;
 
+            for (int i = 0; i < nElements; i++)
+            {
+                double temp = E * As[i] * eps[i];
+                res += Math.Max(0, temp / endAreas[i].Item1 / maxStressT - 1 + utilizationMargin);
+                res -= Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1]));
+                res += Math.Max(0, temp / endAreas[i].Item2 / maxStressT - 1 + utilizationMargin);
+                res -= Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2]));
+            }
+
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                double ep = StrainE(i);
+
+                double cap = capacityReduction[ExtraElements[i].Item2];
+
+                res += Math.Max(0, E * ep / maxStressT - 1 + utilizationMargin);
+                res -= Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap));
+            }
+
+            objectiveValue += res * utilizationFactor;
+            return res * utilizationFactor;
+        }
+
+        private double ComputeP(double gamma)
+        {
+            double res = 0.0;
+
+            for (int i = 0; i < nElements; i++)
+            {
+                double ep = eps[i];
+                if (ep < 0)
+                    continue;
+
+                double temp = Esteel * ep - fyd;
+                res += temp * temp;
+            }
+
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                double ep = StrainE(i);
+                if (ep < 0)
+                    continue;
+
+                double temp = Esteel * ep - fyd;
+                res += temp * temp;
+            }
+
+            objectiveValue += res * gamma;
+            return res * gamma;
+        }
+
+        private double ComputeDerivativeU(int dindex)
+        {
+            double res = 0.0;
+            for (int i = 0; i < nElements; i++)
+            {
+                double dl = Dlength(i, dindex);
+                dls[i] = dl;
+
+                double dA = dArea(i, dindex);
+                dAs[i] = dA;
+            }
+
+            double[] dus = Ddisplacments(dindex);
+
+            for (int i = 0; i < nElements; i++)
+            {
+                double A = As[i];
+                double ep = eps[i];
+
+                double dl = dls[i];
+                double deps = Dstrain(i, dindex, dl, dus);
+                double dA = dAs[i];
+
+                double Astart = endAreas[i].Item1;
+                double Aend = endAreas[i].Item2;
+
+                double dAstart, dAend;
+                dAreaSE(i, dindex, out dAstart, out dAend);
+
+                double temp = E * As[i] * eps[i];
+                bool includeStartT = temp / Astart / maxStressT > 1 - utilizationMargin;
+                bool includeStartC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) < - 1 + utilizationMargin;
+                bool includeEndT = temp / Aend / maxStressT > 1 - utilizationMargin;
+                bool includeEndC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) < - 1 + utilizationMargin;
+
+                if (includeStartT)
+                    res += E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart);
+                else if (includeStartC)
+                    res -= E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart);
+
+                if (includeEndT)
+                    res += E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend);
+                else if (includeEndC)
+                    res -= E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend);
+
+            }
+
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                double ep = StrainE(i);
+
+                double dl = DlengthE(i, dindex);
+                double dA = 0;
+                double deps = DstrainE(i, dindex, dl, dus, dA);
+
+                bool includeT = E * ep / maxStressT > 1 - utilizationMargin;
+                bool includeC = E * ep / (maxStressC * capacityReduction[ExtraElements[i].Item2]) < - 1 + utilizationMargin;
+
+                if (includeT)
+                    res -= E * deps / maxStressT;
+                else if (includeC)
+                    res += E * deps / (maxStressC * capacityReduction[ExtraElements[i].Item2]);
+
+            }
+
+            return res * utilizationFactor;
+        }
+        private double ComputeDerivativeP(int dindex, double gamma)
+        {
+            double res = 0.0;
+            for (int i = 0; i < nElements; i++)
+            {
+                double dl = Dlength(i, dindex);
+                dls[i] = dl;
+
+                double dA = dArea(i, dindex);
+                dAs[i] = dA;
+            }
+
+            double[] dus = Ddisplacments(dindex);
+
+            for (int i = 0; i < nElements; i++)
+            {
+                double ep = eps[i];
+                if (ep < 0)
+                    continue;
+
+                double dl = dls[i];
+                double deps = Dstrain(i, dindex, dl, dus);
+
+                res += 2 * (Esteel * ep - fyd) * Esteel * deps;
+            }
+
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                double ep = StrainE(i);
+                if (ep < 0)
+                    continue;
+
+                double dl = DlengthE(i, dindex);
+                double dA = 0;
+                double deps = DstrainE(i, dindex, dl, dus, dA);
+
+                res += 2 * (Esteel * ep - fyd) * Esteel * deps;
+            }
+
+            return res * gamma;
+        }
         private double ComputeDerivative(int dindex)
         {
             double res = 0.0;
@@ -507,7 +806,61 @@ namespace Krill
 
             return res;
         }
+        private double ComputeUtilizationDerivativeA(int dindex)
+        {
+            double res = 0.0;
 
+            double[] dus = DdisplacmentsA(dindex);
+
+            for (int i = 0; i < nElements; i++)
+            {
+                double A = As[i];
+                double ep = eps[i];
+
+                double deps = DstrainA(i, dus);
+
+                double Astart = endAreas[i].Item1;
+                double Aend = endAreas[i].Item2;
+
+                double temp = E * A * ep;
+                bool includeStartT = temp / Astart / maxStressT > 1 - utilizationMargin;
+                bool includeStartC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) < -1 + utilizationMargin;
+                bool includeEndT = temp / Aend / maxStressT > 1 - utilizationMargin;
+                bool includeEndC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) < -1 + utilizationMargin;
+
+                if (includeStartT)
+                    res += E * deps * A / endAreas[i].Item1;
+                else if (includeStartC)
+                    res -= E * deps * A / endAreas[i].Item1;
+
+                if (includeEndT)
+                    res += E * deps * A / endAreas[i].Item2;
+                else if (includeEndC)
+                    res -= E * deps * A / endAreas[i].Item2;
+
+            }
+
+            return res * utilizationFactor;
+        }
+        private double ComputePeanaltyDerivativeA(int dindex, double gamma)
+        {
+            double res = 0.0;
+
+            double[] dus = DdisplacmentsA(dindex);
+
+            for (int i = 0; i < nElements; i++)
+            {
+                double ep = eps[i];
+                if (ep < 0)
+                    continue;
+
+                double deps = DstrainA(i, dus);
+
+                res += 2 * (Esteel * ep - fyd) * Esteel * deps;
+            }
+
+            return res * gamma;
+        }
         private double ComputeDerivativeA(int dindex)
         {
             double res = 0.0;
@@ -524,27 +877,9 @@ namespace Krill
 
                 double factor = ep < 0 ? 1 : strainFactor;
 
-
                 res += factor *
                     E * A * l * ep * (ep + 2 * areaFactor[i] * deps);
             }
-
-            //for (int i = 0; i < nExtraElements; i++)
-            //{
-            //    double A = AsE[i];      // Will these areas change??
-            //    double l = lsE[i];
-            //    double ep = StrainE(i);
-
-            //    double dl = DlengthE(i, dindex);
-            //    double dA = 0; // E * A * deps / fyd;
-            //    double deps = DstrainE(i, dindex, dl, dus, dA);
-
-            //    double factor = ep < 0 ? 1 : strainFactor;
-
-            //    res -= factor *
-            //        E * (2 * A * l * deps * ep +
-            //        (dA * l + A * dl) * ep * ep);
-            //}
 
             return res;
         }
@@ -554,8 +889,10 @@ namespace Krill
             // Use average area of the different nodes
 
             if (SDF is null)
+            {
+                endAreas[i] = new Tuple<double, double>(As[i], As[i]);
                 return As[i];
-
+            }
             int s = connections[i].Item1 * 3;
             int e = connections[i].Item2 * 3;
 
@@ -574,6 +911,7 @@ namespace Krill
             double areaS = n.X * boxS.Y * boxS.Z + n.Y * boxS.X * boxS.Z + n.Z * boxS.X * boxS.Y;
             double areaE = n.X * boxE.Y * boxE.Z + n.Y * boxE.X * boxE.Z + n.Z * boxE.X * boxE.Y;
 
+            endAreas[i] = new Tuple<double, double>(areaS, areaE);
             return (areaS + areaE) * 0.5;
         }
 
@@ -598,7 +936,7 @@ namespace Krill
             SDF.BoxGradientAt(start, out var dxs, out var dys, out var dzs);
             SDF.BoxGradientAt(end, out var dxe, out var dye, out var dze);
 
-            var box = NodeConnectsToVariable(connections[i].Item1, dindex) ? start : end;
+            var box = NodeConnectsToVariable(connections[i].Item1, dindex) ? boxS : boxE;
 
             var n = end - start;
             n.Unitize();
@@ -664,6 +1002,107 @@ namespace Krill
                            dn.Z * box.X * box.Y + n.Z * dbox.X * box.Y + n.Z * box.X * dbox.Y;
 
             return darea * 0.5;
+        }
+
+        private void dAreaSE(int i, int dindex, out double dAs, out double dAe)
+        {
+            // Use average area of the different nodes
+            if (SDF is null || !ElementConnectsToVariable(i, dindex))
+            {
+                dAs = 0.0;
+                dAe = 0.0;
+                return;
+            }
+
+            int s = connections[i].Item1 * 3;
+            int e = connections[i].Item2 * 3;
+
+            var start = new Point3d(xs[s], xs[s + 1], xs[s + 2]);
+            var end = new Point3d(xs[e], xs[e + 1], xs[e + 2]);
+
+            var boxS = SDF.BoxValueAt(start);
+            var boxE = SDF.BoxValueAt(end);
+
+            SDF.BoxGradientAt(start, out var dxs, out var dys, out var dzs);
+            SDF.BoxGradientAt(end, out var dxe, out var dye, out var dze);
+
+            bool isstart = NodeConnectsToVariable(connections[i].Item1, dindex);
+
+            var box = isstart ? boxS : boxE;
+
+            var n = end - start;
+            n.Unitize();
+
+            var dn = new Vector3d();
+            Vector3d dbox = Vector3d.Unset;
+
+            int off = dindex - connections[i].Item1 * 3;
+            switch (off)
+            {
+                case 0:
+                    dbox = dxs;
+                    dn.X = -(Math.Sign(n.X) - n.X * Math.Abs(n.X));
+                    dn.Y = n.X * Math.Abs(n.Y);
+                    dn.Z = n.X * Math.Abs(n.Z);
+                    break;
+                case 1:
+                    dbox = dys;
+                    dn.X = n.Y * Math.Abs(n.X);
+                    dn.Y = -(Math.Sign(n.Y) - n.Y * Math.Abs(n.Y));
+                    dn.Z = n.Y * Math.Abs(n.Z);
+                    break;
+                case 2:
+                    dbox = dzs;
+                    dn.X = n.Z * Math.Abs(n.X);
+                    dn.Y = n.Z * Math.Abs(n.Y);
+                    dn.Z = -(Math.Sign(n.Z) - n.Z * Math.Abs(n.Z));
+                    break;
+                default:
+                    off = dindex - connections[i].Item2 * 3;
+                    switch (off)
+                    {
+                        case 0:
+                            dbox = dxe;
+                            dn.X = (Math.Sign(n.X) - n.X * Math.Abs(n.X));
+                            dn.Y = -n.X * Math.Abs(n.Y);
+                            dn.Z = -n.X * Math.Abs(n.Z);
+                            break;
+                        case 1:
+                            dbox = dye;
+                            dn.X = -n.Y * Math.Abs(n.X);
+                            dn.Y = (Math.Sign(n.Y) - n.Y * Math.Abs(n.Y));
+                            dn.Z = -n.Y * Math.Abs(n.Z);
+                            break;
+                        case 2:
+                            dbox = dze;
+                            dn.X = -n.Z * Math.Abs(n.X);
+                            dn.Y = -n.Z * Math.Abs(n.Y);
+                            dn.Z = (Math.Sign(n.Z) - n.Z * Math.Abs(n.Z));
+                            break;
+                        default:
+                            break;
+                    }
+                    break;
+            }
+
+            n.X = Math.Abs(n.X);
+            n.Y = Math.Abs(n.Y);
+            n.Z = Math.Abs(n.Z);
+
+            double darea = dn.X * box.Y * box.Z + n.X * dbox.Y * box.Z + n.X * box.Y * dbox.Z +
+                           dn.Y * box.X * box.Z + n.Y * dbox.X * box.Z + n.Y * box.X * dbox.Z +
+                           dn.Z * box.X * box.Y + n.Z * dbox.X * box.Y + n.Z * box.X * dbox.Y;
+
+            if (isstart)
+            {
+                dAs = darea;
+                dAe = 0;
+            }
+            else
+            {
+                dAs = 0;
+                dAe = darea;
+            }
         }
 
         private double[] Displacments()
