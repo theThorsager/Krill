@@ -114,9 +114,7 @@ namespace Krill.Grasshopper
             var gradient = new double[energyTruss.nVariables];
             var gradientA = new double[energyTruss.nElements];
             double energy = energyTruss.ComputeValue();
-            energy += energyTruss.ComputeUtilization();
             double gamma = 1;
-            energy += energyTruss.ComputePenalty(gamma);
             double stepLength = double.MaxValue;
             for (int i = 0; i < n; i++)
             {
@@ -127,20 +125,16 @@ namespace Krill.Grasshopper
                     break;
                 }
 
-                energyTruss.ComputeGradient(ref gradient);
-                energyTruss.ComputeUtilizationGradient(ref gradient);
-                energyTruss.ComputePeanaltynGradient(ref gradient, gamma);
+                //energyTruss.ComputeGradient(ref gradient);
+                //energyTruss.ConstrainGradient(gradient);
                 energyTruss.ComputeGradientA(ref gradientA);
-                energyTruss.ComputeUtilizationGradientA(ref gradientA);
-                energyTruss.ComputePeanaltyGradientA(ref gradientA, gamma);
-                energyTruss.ConstrainToDirections(gradient);
                 energyTruss.ConstrainGradientA(gradientA);
                 energy = energyTruss.ArmijoStep(gradient, gradientA, ref a, out stepLength, gamma);
                 // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                if (stepLength < 1e-6)
+                if (stepLength < 1e-12)
                     break;
 
-                //gamma *= 2;
+                energyTruss.penaltyFactor *= 2;
             }
 
             // Post processing

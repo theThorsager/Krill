@@ -86,7 +86,7 @@ namespace Krill
 
             f = new double[nVariables];
 
-            this.fyd = fyd;
+            this.fyd = fyd*0.6;
             this.E = E;
             this.Esteel = E * 5;    // Double check
 
@@ -145,14 +145,12 @@ namespace Krill
                 this.SetData(null);
                 lastA = a;
                 newValue = ComputeValue();
-                newValue += ComputeUtilization();
-                newValue += ComputePenalty(gamma);
 
                 expectedValue = initialValue - c1 * a * dot;
 
                 stepLength = a * dot;
 
-            } while (newValue > expectedValue && stepLength > 1e-6);
+            } while (newValue > expectedValue && stepLength > 1e-12);
 
             return newValue;
         }
@@ -248,7 +246,7 @@ namespace Krill
                 }
             }
         }
-        public void ConstrainToDirections(double[] gradient)
+        public void ConstrainGradient(double[] gradient)
         {
             Vector.Copy(gradient, realGradient);
             for (int i = 0; i < nVariables; i += 3)
@@ -403,112 +401,34 @@ namespace Krill
                 double strain = Strain(i);
                 eps[i] = strain;
             }
+            SetReductions();
 
             return Compute();
         }
 
-        public double ComputeUtilization()
-        {
-            if (nVariables == nlockedDOF)
-            {
-                return 0;
-            }
+        double strainFactorMain = 1;
 
-            SetReductions();
-
-            return ComputeU();
-        }
-
-        public double ComputePenalty(double gamma)
-        {
-            // reinforcement area
-            if (nVariables == nlockedDOF)
-            {
-                return 0;
-            }
-
-            return ComputeP(gamma);
-        }
-
-        public void ComputeUtilizationGradient(ref double[] gradient)
-        {
-            if (nVariables == nlockedDOF)
-            {
-                return;
-            }
-
-            for (int i = 0; i < nVariables; i++)
-            {
-                if (fixedVariable[i])
-                { }
-                else
-                    gradient[i] += ComputeDerivativeU(i);
-            }
-        }
-
-        public void ComputePeanaltynGradient(ref double[] gradient, double gamma)
-        {
-            if (nVariables == nlockedDOF)
-            {
-                return;
-            }
-
-            for (int i = 0; i < nVariables; i++)
-            {
-                if (fixedVariable[i])
-                { }
-                else
-                    gradient[i] -= ComputeDerivativeP(i, gamma);
-            }
-        }
-
-        double strainFactor = 10;
+        double strainFactor = 5;
         double maxStressT = 1;
         double maxStressC = 1;
 
-        double utilizationFactor = 1;
+        double utilizationFactor = 0;
         double utilizationMargin = 0.1;
+
+        public double penaltyFactor = 0;
 
         public void ComputeGradient(ref double[] gradient)
         {
             if (nVariables == nlockedDOF)
             {
-                gradient = new double[nVariables];
+                Vector.Clear(gradient);
                 return;
             }
 
             for (int i = 0; i < nVariables; i++)
             {
-                if (fixedVariable[i])
-                    gradient[i] = 0;
-                else
+                if (!fixedVariable[i])
                     gradient[i] = ComputeDerivative(i);
-            }
-        }
-        public void ComputeUtilizationGradientA(ref double[] gradient)
-        {
-            if (nVariables == nlockedDOF)
-            {
-                gradient = new double[nElements];
-                return;
-            }
-
-            for (int i = 0; i < nElements; i++)
-            {
-                gradient[i] -= ComputeUtilizationDerivativeA(i);
-            }
-        }
-        public void ComputePeanaltyGradientA(ref double[] gradient, double gamma)
-        {
-            if (nVariables == nlockedDOF)
-            {
-                gradient = new double[nElements];
-                return;
-            }
-
-            for (int i = 0; i < nElements; i++)
-            {
-                gradient[i] -= ComputePeanaltyDerivativeA(i, gamma);
             }
         }
         public void ComputeGradientA(ref double[] gradient)
@@ -521,7 +441,7 @@ namespace Krill
 
             for (int i = 0; i < nElements; i++)
             {
-                gradient[i] = -ComputeDerivativeA(i);
+                gradient[i] = ComputeDerivativeA(i);
             }
         }
         private void SetNeighbourList()
@@ -566,198 +486,77 @@ namespace Krill
                 {
                     capacityReduction[i] = 1;
                 }
-
             }
         }
 
         private double Compute()
         {
-            double res = 0.0;
+            double strainEnergy = 0.0;
+            double utilization = 0.0;
+            double penalty = 0.0;
 
             for (int i = 0; i < nElements; i++)
             {
-                double factor = eps[i] < 0 ? 1 : strainFactor;
+                double ep = eps[i];
 
-                res += factor * E * areaFactor[i] * As[i] * ls[i] * eps[i] * eps[i];
-            }
-
-            for (int i = 0; i < nExtraElements; i++)
-            {
-                double ep = StrainE(i);
+                // Strain Energy
                 double factor = ep < 0 ? 1 : strainFactor;
+                strainEnergy += factor * E * areaFactor[i] * As[i] * ls[i] * ep * ep;
 
-                res += factor * E * AsE[i] * lsE[i] * ep * ep;
-            }
+                // Utilization
+                double temp = E * As[i] * ep;
+                Func<double, double> Square = x => x * x;
+                utilization += Square(Math.Max(0, temp / endAreas[i].Item1 / maxStressT - 1 + utilizationMargin));
+                utilization -= Square(Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1])));
+                utilization += Square(Math.Max(0, temp / endAreas[i].Item2 / maxStressT - 1 + utilizationMargin));
+                utilization -= Square(Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2])));
 
-            objectiveValue = res;
-            return res;
-        }
-        private double ComputeU()
-        {
-            double res = 0.0;
+                // Penalty
+                if (ep > 0)
+                {
+                    double t = Esteel * ep - fyd;
+                    penalty += t * t;
 
-            for (int i = 0; i < nElements; i++)
-            {
-                double temp = E * As[i] * eps[i];
-                res += Math.Max(0, temp / endAreas[i].Item1 / maxStressT - 1 + utilizationMargin);
-                res -= Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1]));
-                res += Math.Max(0, temp / endAreas[i].Item2 / maxStressT - 1 + utilizationMargin);
-                res -= Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2]));
+                    //////////////
+                    //double t2 = Esteel * ep * As[i];
+                    //penalty += t2 * t2;
+                }
             }
 
             for (int i = 0; i < nExtraElements; i++)
             {
                 double ep = StrainE(i);
 
+                // Strain Energy
+                double factor = ep < 0 ? 1 : strainFactor;
+                strainEnergy += factor * E * AsE[i] * lsE[i] * ep * ep;
+
+                // Utilization
                 double cap = capacityReduction[ExtraElements[i].Item2];
 
-                res += Math.Max(0, E * ep / maxStressT - 1 + utilizationMargin);
-                res -= Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap));
+                utilization += Math.Max(0, E * ep / maxStressT - 1 + utilizationMargin);
+                utilization -= Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap));
+
+                // Penalty
+                if (ep > 0)
+                {
+                    double temp = Esteel * ep - fyd;
+                    penalty += temp * temp;
+                }
             }
 
-            objectiveValue += res * utilizationFactor;
-            return res * utilizationFactor;
+            double result = strainFactorMain * strainEnergy + utilization * utilizationFactor + penalty * penaltyFactor;
+
+            objectiveValue = result;
+            return result;
         }
 
-        private double ComputeP(double gamma)
-        {
-            double res = 0.0;
-
-            for (int i = 0; i < nElements; i++)
-            {
-                double ep = eps[i];
-                if (ep < 0)
-                    continue;
-
-                double temp = Esteel * ep - fyd;
-                res += temp * temp;
-            }
-
-            for (int i = 0; i < nExtraElements; i++)
-            {
-                double ep = StrainE(i);
-                if (ep < 0)
-                    continue;
-
-                double temp = Esteel * ep - fyd;
-                res += temp * temp;
-            }
-
-            objectiveValue += res * gamma;
-            return res * gamma;
-        }
-
-        private double ComputeDerivativeU(int dindex)
-        {
-            double res = 0.0;
-            for (int i = 0; i < nElements; i++)
-            {
-                double dl = Dlength(i, dindex);
-                dls[i] = dl;
-
-                double dA = dArea(i, dindex);
-                dAs[i] = dA;
-            }
-
-            double[] dus = Ddisplacments(dindex);
-
-            for (int i = 0; i < nElements; i++)
-            {
-                double A = As[i];
-                double ep = eps[i];
-
-                double dl = dls[i];
-                double deps = Dstrain(i, dindex, dl, dus);
-                double dA = dAs[i];
-
-                double Astart = endAreas[i].Item1;
-                double Aend = endAreas[i].Item2;
-
-                double dAstart, dAend;
-                dAreaSE(i, dindex, out dAstart, out dAend);
-
-                double temp = E * As[i] * eps[i];
-                bool includeStartT = temp / Astart / maxStressT > 1 - utilizationMargin;
-                bool includeStartC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) < - 1 + utilizationMargin;
-                bool includeEndT = temp / Aend / maxStressT > 1 - utilizationMargin;
-                bool includeEndC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) < - 1 + utilizationMargin;
-
-                if (includeStartT)
-                    res += E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart);
-                else if (includeStartC)
-                    res -= E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart);
-
-                if (includeEndT)
-                    res += E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend);
-                else if (includeEndC)
-                    res -= E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend);
-
-            }
-
-            for (int i = 0; i < nExtraElements; i++)
-            {
-                double ep = StrainE(i);
-
-                double dl = DlengthE(i, dindex);
-                double dA = 0;
-                double deps = DstrainE(i, dindex, dl, dus, dA);
-
-                bool includeT = E * ep / maxStressT > 1 - utilizationMargin;
-                bool includeC = E * ep / (maxStressC * capacityReduction[ExtraElements[i].Item2]) < - 1 + utilizationMargin;
-
-                if (includeT)
-                    res -= E * deps / maxStressT;
-                else if (includeC)
-                    res += E * deps / (maxStressC * capacityReduction[ExtraElements[i].Item2]);
-
-            }
-
-            return res * utilizationFactor;
-        }
-        private double ComputeDerivativeP(int dindex, double gamma)
-        {
-            double res = 0.0;
-            for (int i = 0; i < nElements; i++)
-            {
-                double dl = Dlength(i, dindex);
-                dls[i] = dl;
-
-                double dA = dArea(i, dindex);
-                dAs[i] = dA;
-            }
-
-            double[] dus = Ddisplacments(dindex);
-
-            for (int i = 0; i < nElements; i++)
-            {
-                double ep = eps[i];
-                if (ep < 0)
-                    continue;
-
-                double dl = dls[i];
-                double deps = Dstrain(i, dindex, dl, dus);
-
-                res += 2 * (Esteel * ep - fyd) * Esteel * deps;
-            }
-
-            for (int i = 0; i < nExtraElements; i++)
-            {
-                double ep = StrainE(i);
-                if (ep < 0)
-                    continue;
-
-                double dl = DlengthE(i, dindex);
-                double dA = 0;
-                double deps = DstrainE(i, dindex, dl, dus, dA);
-
-                res += 2 * (Esteel * ep - fyd) * Esteel * deps;
-            }
-
-            return res * gamma;
-        }
         private double ComputeDerivative(int dindex)
         {
-            double res = 0.0;
+            double strainEnergy = 0.0;
+            double utilization = 0.0;
+            double penalty = 0.0;
+
             for (int i = 0; i < nElements; i++)
             {
                 double dl = Dlength(i, dindex);
@@ -779,12 +578,44 @@ namespace Krill
                 double deps = Dstrain(i, dindex, dl, dus);
                 double dA = dAs[i];
 
+
+                // Strain Energy
                 double factor = ep < 0 ? 1 : strainFactor;
-
-
-                res += factor *
+                strainEnergy += factor *
                     areaFactor[i] * E * (2 * A * l * deps * ep + 
                     (dA * l + A * dl) * ep * ep);
+
+                // Utilization
+                double Astart = endAreas[i].Item1;
+                double Aend = endAreas[i].Item2;
+
+                double dAstart, dAend;
+                dAreaSE(i, dindex, out dAstart, out dAend);
+
+                double temp = E * A * ep;
+                double startValT = temp / Astart / maxStressT - 1 + utilizationMargin;
+                double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
+                double endValT = temp / Aend / maxStressT - 1 + utilizationMargin;
+                double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
+
+                if (startValT > 0)
+                    utilization += 2 * startValT * E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart * maxStressT);
+                else if (startValC < 0)
+                    utilization -= 2 * startValC * E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart * maxStressC);
+
+                if (endValT > 0)
+                    utilization += 2 * endValT * E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend * maxStressT);
+                else if (endValC < 0)
+                    utilization -= 2 * endValC * E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend * maxStressC);
+
+                // Penalty
+                if (ep > 0)
+                {
+                    penalty += 2 * (Esteel * ep - fyd) * Esteel * deps;
+
+
+                    //penalty += 2 * (Esteel * ep * A) * Esteel * (deps * A + ep * dA);
+                }
             }
 
             for (int i = 0; i < nExtraElements; i++)
@@ -797,73 +628,38 @@ namespace Krill
                 double dA = 0; // E * A * deps / fyd;
                 double deps = DstrainE(i, dindex, dl, dus, dA);
 
-                double factor = ep < 0 ? 1 : strainFactor;
 
-                res -= factor *
+                // Strain Energy
+                double factor = ep < 0 ? 1 : strainFactor;
+                strainEnergy -= factor *
                     E * (2 * A * l * deps * ep +
                     (dA * l + A * dl) * ep * ep);
+
+                // Utilization
+                double valT = E * ep / maxStressT - 1 + utilizationMargin;
+                double valC = E * ep / (maxStressC * capacityReduction[ExtraElements[i].Item2]) + 1 - utilizationMargin;
+
+                if (valT > 0)
+                    utilization -= 2 * valT * E * deps / maxStressT;
+                else if (valC < 0)
+                    utilization += 2 * valC * E * deps / (maxStressC * capacityReduction[ExtraElements[i].Item2]);
+
+                // Penalty
+                if (ep > 0)
+                {
+                    penalty += 2 * (Esteel * ep - fyd) * Esteel * deps;
+                }
             }
 
-            return res;
-        }
-        private double ComputeUtilizationDerivativeA(int dindex)
-        {
-            double res = 0.0;
+            double result = strainFactorMain * strainEnergy + utilization * utilizationFactor + penalty * penaltyFactor;
 
-            double[] dus = DdisplacmentsA(dindex);
-
-            for (int i = 0; i < nElements; i++)
-            {
-                double A = As[i];
-                double ep = eps[i];
-
-                double deps = DstrainA(i, dus);
-
-                double Astart = endAreas[i].Item1;
-                double Aend = endAreas[i].Item2;
-
-                double temp = E * A * ep;
-                bool includeStartT = temp / Astart / maxStressT > 1 - utilizationMargin;
-                bool includeStartC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) < -1 + utilizationMargin;
-                bool includeEndT = temp / Aend / maxStressT > 1 - utilizationMargin;
-                bool includeEndC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) < -1 + utilizationMargin;
-
-                if (includeStartT)
-                    res += E * deps * A / endAreas[i].Item1;
-                else if (includeStartC)
-                    res -= E * deps * A / endAreas[i].Item1;
-
-                if (includeEndT)
-                    res += E * deps * A / endAreas[i].Item2;
-                else if (includeEndC)
-                    res -= E * deps * A / endAreas[i].Item2;
-
-            }
-
-            return res * utilizationFactor;
-        }
-        private double ComputePeanaltyDerivativeA(int dindex, double gamma)
-        {
-            double res = 0.0;
-
-            double[] dus = DdisplacmentsA(dindex);
-
-            for (int i = 0; i < nElements; i++)
-            {
-                double ep = eps[i];
-                if (ep < 0)
-                    continue;
-
-                double deps = DstrainA(i, dus);
-
-                res += 2 * (Esteel * ep - fyd) * Esteel * deps;
-            }
-
-            return res * gamma;
+            return result;
         }
         private double ComputeDerivativeA(int dindex)
         {
-            double res = 0.0;
+            double strainEnergy = 0.0;
+            double utilization = 0.0;
+            double penalty = 0.0;
 
             double[] dus = DdisplacmentsA(dindex);
 
@@ -875,13 +671,43 @@ namespace Krill
 
                 double deps = DstrainA(i, dus);
 
+                // Strain Energy
                 double factor = ep < 0 ? 1 : strainFactor;
-
-                res += factor *
+                strainEnergy += factor *
                     E * A * l * ep * (ep + 2 * areaFactor[i] * deps);
+
+                // Utilization
+                double Astart = endAreas[i].Item1;
+                double Aend = endAreas[i].Item2;
+
+                double temp = E * A * ep;
+                double startValT = temp / Astart / maxStressT - 1 + utilizationMargin;
+                double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
+                double endValT = temp / Aend / maxStressT - 1 + utilizationMargin;
+                double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
+
+                if (startValT > 0)
+                    utilization += 2 * startValT * E * deps * A / (endAreas[i].Item1 * maxStressT);
+                else if (startValC < 0)
+                    utilization -= 2 * startValC * E * deps * A / (endAreas[i].Item1 * maxStressC);
+
+                if (endValT > 0)
+                    utilization += 2 * endValT * E * deps * A / (endAreas[i].Item2 * maxStressT);
+                else if (endValC < 0)
+                    utilization -= 2 * endValC * E * deps * A / (endAreas[i].Item2 * maxStressC);
+
+                // Penalty
+                if (ep > 0)
+                {
+                    penalty += 2 * (Esteel * ep - fyd) * Esteel * deps;
+
+                    //penalty += 2 * (Esteel * ep * A) * Esteel * deps * A;
+                }
             }
 
-            return res;
+            double result = strainFactorMain * strainEnergy + utilization * utilizationFactor + penalty * penaltyFactor;
+
+            return result;
         }
 
         private double Area(int i)
@@ -1357,10 +1183,10 @@ namespace Krill
         {
             int i = elementIndex;
             double temp = E * As[i] / ls[i];
-            Kelocal[0, 0] = temp;
-            Kelocal[0, 1] = -temp;
-            Kelocal[1, 0] = -temp;
-            Kelocal[1, 1] = temp;
+            dKelocal[0, 0] = temp;
+            dKelocal[0, 1] = -temp;
+            dKelocal[1, 0] = -temp;
+            dKelocal[1, 1] = temp;
         }
         private void LocalElementStiffness(int elementIndex)
         {
@@ -1437,7 +1263,7 @@ namespace Krill
             var con = ExtraElements[i];
 
             double F = con.Item3;
-            return F / (AsE[i] * E);
+            return -F / (AsE[i] * E);
         }
 
         private double Dstrain(int i, int dindex, double dlength, double[] dus)
@@ -1510,7 +1336,7 @@ namespace Krill
                 dus[con.Item2 * 3 + 1],
                 dus[con.Item2 * 3 + 2]);
 
-            double res = t * (duend - dustart) * l;
+            double res = t * (duend - dustart);
             return res / l;
         }
         private double DstrainE(int i, int dindex, double dlength, double[] dus, double dA)
