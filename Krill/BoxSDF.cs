@@ -454,14 +454,14 @@ namespace Krill
                 vec.Z = maxZ < vec.Z ? maxZ : vec.Z;
                 vecs[i] = vec;
             }
-            var value = (1 - a) * (1 - b) * (1 - c) * vecs[0]
-                    + a * (1 - b) * (1 - c) * vecs[1]
-                    + (1 - a) * b * (1 - c) * vecs[2]
-                    + a * b * (1 - c) * vecs[3]
-                    + (1 - a) * (1 - b) * c * vecs[4]
-                    + a * (1 - b) * c * vecs[5]
-                    + (1 - a) * b * c * vecs[6]
-                    + a * b * c * vecs[7];
+            //var value = (1 - a) * (1 - b) * (1 - c) * vecs[0]
+            //        + a * (1 - b) * (1 - c) * vecs[1]
+            //        + (1 - a) * b * (1 - c) * vecs[2]
+            //        + a * b * (1 - c) * vecs[3]
+            //        + (1 - a) * (1 - b) * c * vecs[4]
+            //        + a * (1 - b) * c * vecs[5]
+            //        + (1 - a) * b * c * vecs[6]
+            //        + a * b * c * vecs[7];
 
             dx = -(1 - b) * (1 - c) * vecs[0]
                     + (1 - b) * (1 - c) * vecs[1]
@@ -485,10 +485,14 @@ namespace Krill
                     - a * (1 - b) * vecs[1]
                     - (1 - a) * b * vecs[2]
                     - a * b * vecs[3]
-                    + (1 - a) * (1 - b) * c * vecs[4]
+                    + (1 - a) * (1 - b) * vecs[4]
                     + a * (1 - b) * vecs[5]
                     + (1 - a) * b * vecs[6]
                     + a * b * vecs[7];
+
+            dx /= SDF.delta;
+            dy /= SDF.delta;
+            dz /= SDF.delta;
         }
 
     }

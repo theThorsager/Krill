@@ -387,7 +387,7 @@ namespace Krill
         }
         public void ApplyGradientA(double[] gradientA, double factor = 1)
         {
-            Vector.Add(nElements, Math.Min(1, factor), gradientA, areaFactor, areaFactor);
+            Vector.Add(nElements, factor, gradientA, areaFactor, areaFactor);
         }
         public double ComputeValue()
         {
@@ -428,7 +428,7 @@ namespace Krill
             for (int i = 0; i < nVariables; i++)
             {
                 if (!fixedVariable[i])
-                    gradient[i] = ComputeDerivative(i);
+                    gradient[i] = -ComputeDerivative(i);
             }
         }
         public void ComputeGradientA(ref double[] gradient)
@@ -707,7 +707,7 @@ namespace Krill
 
             double result = strainFactorMain * strainEnergy + utilization * utilizationFactor + penalty * penaltyFactor;
 
-            return result;
+            return -result;
         }
 
         private double Area(int i)
@@ -762,72 +762,81 @@ namespace Krill
             SDF.BoxGradientAt(start, out var dxs, out var dys, out var dzs);
             SDF.BoxGradientAt(end, out var dxe, out var dye, out var dze);
 
-            var box = NodeConnectsToVariable(connections[i].Item1, dindex) ? boxS : boxE;
-
             var n = end - start;
-            n.Unitize();
+            double l = n.Length;
+            double linv = 1 / (l * l * l);
 
             var dn = new Vector3d();
             Vector3d dbox = Vector3d.Unset;
 
             int off = dindex - connections[i].Item1 * 3;
+            Vector3d box = boxS;
+            Vector3d boxO = boxE;
+
+            Func<double, double> sign = x => x < 0 ? -1 : 1;
+
             switch (off)
             {
                 case 0:
                     dbox = dxs;
-                    dn.X = -(Math.Sign(n.X) - n.X * Math.Abs(n.X));
-                    dn.Y = n.X * Math.Abs(n.Y);
-                    dn.Z = n.X * Math.Abs(n.Z);
+                    dn.X = (l*l* sign(n.X) - n.X * Math.Abs(n.X));
+                    dn.Y = -n.X * Math.Abs(n.Y);
+                    dn.Z = -n.X * Math.Abs(n.Z);
                     break;
                 case 1:
                     dbox = dys;
-                    dn.X = n.Y * Math.Abs(n.X);
-                    dn.Y = -(Math.Sign(n.Y) - n.Y * Math.Abs(n.Y));
-                    dn.Z = n.Y * Math.Abs(n.Z);
+                    dn.X = -n.Y * Math.Abs(n.X);
+                    dn.Y = (l*l* sign(n.Y) - n.Y * Math.Abs(n.Y));
+                    dn.Z = -n.Y * Math.Abs(n.Z);
                     break;
                 case 2:
                     dbox = dzs;
-                    dn.X = n.Z * Math.Abs(n.X);
-                    dn.Y = n.Z * Math.Abs(n.Y);
-                    dn.Z = -(Math.Sign(n.Z) - n.Z * Math.Abs(n.Z));
+                    dn.X = -n.Z * Math.Abs(n.X);
+                    dn.Y = -n.Z * Math.Abs(n.Y);
+                    dn.Z = (l*l* sign(n.Z) - n.Z * Math.Abs(n.Z));
                     break;
                 default:
                     off = dindex - connections[i].Item2 * 3;
+                    box = boxE;
+                    boxO = boxS;
                     switch (off)
                     {
                         case 0:
                             dbox = dxe;
-                            dn.X = (Math.Sign(n.X) - n.X * Math.Abs(n.X));
-                            dn.Y = -n.X * Math.Abs(n.Y);
-                            dn.Z = -n.X * Math.Abs(n.Z);
+                            dn.X = -(l*l* sign(n.X) - n.X * Math.Abs(n.X));
+                            dn.Y = n.X * Math.Abs(n.Y);
+                            dn.Z = n.X * Math.Abs(n.Z);
                             break;
                         case 1:
                             dbox = dye;
-                            dn.X = -n.Y * Math.Abs(n.X);
-                            dn.Y = (Math.Sign(n.Y) - n.Y * Math.Abs(n.Y));
-                            dn.Z = -n.Y * Math.Abs(n.Z);
+                            dn.X = n.Y * Math.Abs(n.X);
+                            dn.Y = -(l*l* sign(n.Y) - n.Y * Math.Abs(n.Y));
+                            dn.Z = n.Y * Math.Abs(n.Z);
                             break;
                         case 2:
                             dbox = dze;
-                            dn.X = -n.Z * Math.Abs(n.X);
-                            dn.Y = -n.Z * Math.Abs(n.Y);
-                            dn.Z = (Math.Sign(n.Z) - n.Z * Math.Abs(n.Z));
+                            dn.X = n.Z * Math.Abs(n.X);
+                            dn.Y = n.Z * Math.Abs(n.Y);
+                            dn.Z = -(l*l* sign(n.Z) - n.Z * Math.Abs(n.Z));
                             break;
                         default:
                             break;
                     }
                     break;
             }
-
+            dn *= -linv;
             n.X = Math.Abs(n.X);
             n.Y = Math.Abs(n.Y);
             n.Z = Math.Abs(n.Z);
+            n.Unitize();
 
             double darea = dn.X * box.Y * box.Z + n.X * dbox.Y * box.Z + n.X * box.Y * dbox.Z +
                            dn.Y * box.X * box.Z + n.Y * dbox.X * box.Z + n.Y * box.X * dbox.Z +
                            dn.Z * box.X * box.Y + n.Z * dbox.X * box.Y + n.Z * box.X * dbox.Y;
 
-            return darea * 0.5;
+            double dareaOther = dn.X * boxO.Y * boxO.Z + dn.Y * boxO.X * boxO.Z + dn.Z * boxO.X * boxO.Y;
+
+            return (darea + dareaOther) * 0.5;
         }
 
         private void dAreaSE(int i, int dindex, out double dAs, out double dAe)
@@ -1000,7 +1009,9 @@ namespace Krill
             LDL.Solve(usb, res1);
 
             double[] res2 = new double[nVariables];
-            Merge(res1, usa, res2);
+            Merge(res1, new double[nlockedDOF], res2);
+
+            Vector.Scale(-1, res2);
             return res2;
         }
 
@@ -1020,7 +1031,9 @@ namespace Krill
             LDL.Solve(usb, res1);
 
             double[] res2 = new double[nVariables];
-            Merge(res1, usa, res2);
+            Merge(res1, new double[nlockedDOF], res2);
+
+            Vector.Scale(-1, res2);
             return res2;
         }
 
@@ -1073,8 +1086,8 @@ namespace Krill
                 for (int j = 0; j < 3; j++)
                 {
                     res[start + i] += Ae[i, j] * u[start + j];
-                    res[start + i] += Ae[i, j + 3] * u[end + j];
-                    res[end + i] += Ae[i + 3, j] * u[start + j];
+                    res[start + i] += Ae[i + 3, j] * u[end + j];
+                    res[end + i] += Ae[i, j + 3] * u[start + j];
                     res[end + i] += Ae[i + 3, j + 3] * u[end + j];
                 }
             }
