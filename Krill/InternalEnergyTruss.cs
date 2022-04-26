@@ -163,7 +163,7 @@ namespace Krill
                 fixedVariable[i + 2] = true;
             }
         }
-        public void LockElement(Point3d from, Point3d to, bool first)
+        public void LockElement(Point3d from, Point3d to, bool Fixed)
         {
             int i = FindPoint(from);
             int j = FindPoint(to);
@@ -174,7 +174,16 @@ namespace Krill
             lockedDOF[i * 3 + 1] = true;
             lockedDOF[i * 3 + 2] = true;
 
-            SetFixedDir(j, from - to, first);
+            if (!Fixed)
+                SetFixedDir(j, from - to);
+        }
+
+        public void LockVariable(Point3d pt, bool x, bool y, bool z)
+        {
+            int i = FindPoint(pt);
+            lockedDOF[i * 3 + 0] |= x;
+            lockedDOF[i * 3 + 1] |= y;
+            lockedDOF[i * 3 + 2] |= z;
         }
 
         public void SetExtraElement(Point3d extra, Point3d to, double f)
@@ -191,7 +200,7 @@ namespace Krill
             f[to * 3] += dir.X * load;
             f[to * 3 + 1] += dir.Y * load;
             f[to * 3 + 2] += dir.Z * load;
-            SetFixedDir(to, dir, false);
+            SetFixedDir(to, dir);
         }
         private int FindPoint(Point3d pt)
         {
@@ -212,39 +221,18 @@ namespace Krill
             return -1;
         }
 
-        public void SetFixedDir(Point3d pt, Vector3d dir, bool first)
+        public void SetFixedDir(Point3d pt, Vector3d dir)
         {
             int i  = FindPoint(pt);
             if (i != -1)
-                SetFixedDir(i, dir, first);
+                SetFixedDir(i, dir);
         }
-        public void SetFixedDir(int i, Vector3d dir, bool first)
+        public void SetFixedDir(int i, Vector3d dir)
         {
             dir.Unitize();
             fixedDirections[i*3+0] = dir.X;
             fixedDirections[i*3+1] = dir.Y;
             fixedDirections[i*3+2] = dir.Z;
-
-            if (first)
-            {
-                // lock in all directions except ours
-
-                if (Math.Abs(dir.X) > Math.Abs(dir.Y) && Math.Abs(dir.X) > Math.Abs(dir.Z))
-                {
-                    lockedDOF[i * 3 + 1] = true;
-                    lockedDOF[i * 3 + 2] = true;
-                }
-                else if (Math.Abs(dir.Y) > Math.Abs(dir.Z))
-                {
-                    lockedDOF[i * 3 + 0] = true;
-                    lockedDOF[i * 3 + 2] = true;
-                }
-                else
-                {
-                    lockedDOF[i * 3 + 0] = true;
-                    lockedDOF[i * 3 + 1] = true;
-                }
-            }
         }
         public void ConstrainGradient(double[] gradient)
         {

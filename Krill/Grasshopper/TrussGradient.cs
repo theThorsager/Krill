@@ -78,31 +78,33 @@ namespace Krill.Grasshopper
             var energyTruss = new InternalEnergyTruss();
             energyTruss.Init(truss.Value);
             energyTruss.SDF = boxSDFGoo?.Value;
-            bool first = true;
             foreach (var bc in BCs)
             {
                 if (bc is Containers.DiscreteBoundaryConditionDirechlet bcD)
                 {
-                    int i = truss.Value.Nodes.FindIndex(x => x.DistanceToSquared(bc.line.From) < 1e-6);
+                    int i = truss.Value.Nodes.FindIndex(x => x.DistanceToSquared(bcD.line.From) < 1e-6);
                     int count = truss.Value.Connections.SelectMany(x => new[] {x.Item1, x.Item2}).Count(x => x == i);
 
                     if (count > 1)
                     {
-                        energyTruss.LockElement(bcD.line.To, bcD.line.From, first);
+                        energyTruss.LockElement(bcD.line.To, bcD.line.From, bcD.Fixed);
                     }
                     else
                     {
-                        energyTruss.LockElement(bcD.line.From, bcD.line.To, first);
+                        energyTruss.LockElement(bcD.line.From, bcD.line.To, bcD.Fixed);
                     }
-                    first = false;
                 }
                 else if (bc is Containers.DiscreteBoundaryConditionNuemann bcN)
                 {
-                    bool flip = truss.Value.Nodes.Any(x => x.DistanceToSquared(bc.line.From) < 1e-6);
+                    bool flip = truss.Value.Nodes.Any(x => x.DistanceToSquared(bcN.line.From) < 1e-6);
                     if (flip)
                         energyTruss.SetExtraElement(bcN.line.To, bcN.line.From, bcN.load);
                     else
                         energyTruss.SetExtraElement(bcN.line.From, bcN.line.To, bcN.load);
+                }
+                else if (bc is Containers.DiscreteBoundaryConditionVariables bcV)
+                {
+                    energyTruss.LockVariable(bcV.point, bcV.lockX, bcV.lockY, bcV.lockZ);
                 }
             }
             if (lockZ)

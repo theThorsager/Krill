@@ -7,13 +7,13 @@ using Krill;
 
 namespace Krill.Grasshopper.Param
 {
-    public class DirechletPt : GH_Component
+    public class DirechletLine : GH_Component
     {
         /// <summary>
         /// Initializes a new instance of the Settings class.
         /// </summary>
-        public DirechletPt()
-          : base("DirechletPt", "DirechletPt",
+        public DirechletLine()
+          : base("DirechletLine", "DirechletLine",
               "Description",
               "Krill", "Utility")
         {
@@ -25,11 +25,8 @@ namespace Krill.Grasshopper.Param
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
             // Direchlet
-            pManager.AddPointParameter("point", "pt", "", GH_ParamAccess.item);
-            pManager.AddBooleanParameter("x", "x", "", GH_ParamAccess.item, true);
-            pManager.AddBooleanParameter("y", "y", "", GH_ParamAccess.item, true);
-            pManager.AddBooleanParameter("z", "z", "", GH_ParamAccess.item, true);
-            //pManager.AddVectorParameter("displacment", "disp", "", GH_ParamAccess.item);
+            pManager.AddLineParameter("line", "l", "", GH_ParamAccess.item);
+            pManager.AddBooleanParameter("fixed", "fixed", "", GH_ParamAccess.item, true);
 
         }
 
@@ -47,23 +44,17 @@ namespace Krill.Grasshopper.Param
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            var pt = new Point3d();
-            bool x = true;
-            bool y = true;
-            bool z = true;
+            var line = new Line();
+            bool fix = true;
 
-            DA.GetData(0, ref pt);
-            DA.GetData(1, ref x);
-            DA.GetData(2, ref y);
-            DA.GetData(3, ref z);
+            DA.GetData(0, ref line);
+            DA.GetData(1, ref fix);
 
 
-            var direchlet = new Containers.DiscreteBoundaryConditionVariables()
+            var direchlet = new Containers.DiscreteBoundaryConditionDirechlet()
             {
-                point = pt,
-                lockX = x,
-                lockY = y,
-                lockZ = z
+                line = line,
+                Fixed = fix
             };
 
             DA.SetData(0, new DiscreteBoundaryConditionGoo(direchlet));
@@ -87,7 +78,7 @@ namespace Krill.Grasshopper.Param
         /// </summary>
         public override Guid ComponentGuid
         {
-            get { return new Guid("3BB13152-E5D2-4AC3-AC8D-1012DF30E0EC"); }
+            get { return new Guid("5FECCCEF-2EAC-4B73-AD86-A31C137F9D2B"); }
         }
     }
 }
