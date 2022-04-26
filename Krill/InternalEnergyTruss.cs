@@ -150,7 +150,7 @@ namespace Krill
 
                 stepLength = a * dot;
 
-            } while (newValue > expectedValue && stepLength > 1e-12);
+            } while (newValue > expectedValue && stepLength > 1e-16);
 
             return newValue;
         }
@@ -396,6 +396,14 @@ namespace Krill
                 return 0;
             }
             us = Displacments();
+
+            double maxlength = ls.Max();
+            if (us.Any(x => Math.Abs(x) > maxlength))
+            {
+                this.mechanisim = true;
+                return double.MaxValue;
+            }
+
             for (int i = 0; i < nElements; i++)
             {
                 double strain = Strain(i);
@@ -406,16 +414,16 @@ namespace Krill
             return Compute();
         }
 
-        double strainFactorMain = 1;
+        double strainFactorMain = 0;
+        double reinforcmentFactor = 1;
 
         double strainFactor = 5;
-        double maxStressT = 1;
         double maxStressC = 1;
 
         double utilizationFactor = 0;
         double utilizationMargin = 0.1;
 
-        public double penaltyFactor = 0;
+        public double penaltyFactor = 1;
 
         public void ComputeGradient(ref double[] gradient)
         {
@@ -492,6 +500,7 @@ namespace Krill
         private double Compute()
         {
             double strainEnergy = 0.0;
+            double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
 
@@ -503,19 +512,24 @@ namespace Krill
                 double factor = ep < 0 ? 1 : strainFactor;
                 strainEnergy += factor * E * areaFactor[i] * As[i] * ls[i] * ep * ep;
 
+                // Reinforcement
+                if (ep > 0)
+                {
+                    reinforcement += areaFactor[i] * areaFactor[i] * As[i] * As[i] * ls[i] * ep;
+                }
+
                 // Utilization
-                double temp = E * As[i] * ep;
+                double sigma = E * As[i] * ep;
                 Func<double, double> Square = x => x * x;
-                utilization += Square(Math.Max(0, temp / endAreas[i].Item1 / maxStressT - 1 + utilizationMargin));
-                utilization -= Square(Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1])));
-                utilization += Square(Math.Max(0, temp / endAreas[i].Item2 / maxStressT - 1 + utilizationMargin));
-                utilization -= Square(Math.Min(0, 1 - utilizationMargin + temp / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2])));
+                utilization -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1])));
+                utilization -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2])));
 
                 // Penalty
                 if (ep > 0)
                 {
-                    double t = Esteel * ep - fyd;
-                    penalty += t * t;
+                    double stress = Esteel * ep;
+                    double t = stress - fyd;
+                    penalty += t * t * stress * stress;
 
                     //////////////
                     //double t2 = Esteel * ep * As[i];
@@ -531,29 +545,34 @@ namespace Krill
                 double factor = ep < 0 ? 1 : strainFactor;
                 strainEnergy += factor * E * AsE[i] * lsE[i] * ep * ep;
 
+                // Reinforcement
+                if (ep > 0)
+                {
+                    reinforcement += AsE[i] * AsE[i] * lsE[i] * ep;
+                }
                 // Utilization
                 double cap = capacityReduction[ExtraElements[i].Item2];
 
-                utilization += Math.Max(0, E * ep / maxStressT - 1 + utilizationMargin);
                 utilization -= Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap));
 
                 // Penalty
                 if (ep > 0)
                 {
-                    double temp = Esteel * ep - fyd;
-                    penalty += temp * temp;
+                    double stress = Esteel * ep;
+                    double t = stress - fyd;
+                    penalty += t * t * stress * stress;
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
 
             objectiveValue = result;
             return result;
         }
-
         private double ComputeDerivative(int dindex)
         {
             double strainEnergy = 0.0;
+            double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
 
@@ -585,6 +604,14 @@ namespace Krill
                     areaFactor[i] * E * (2 * A * l * deps * ep + 
                     (dA * l + A * dl) * ep * ep);
 
+                // Reinforcement
+                if (ep > 0)
+                {
+                    reinforcement += areaFactor[i] * areaFactor[i] *
+                        (2 * ep * l * dA * A +
+                        (deps * l + ep * dl) * A * A);
+                }
+
                 // Utilization
                 double Astart = endAreas[i].Item1;
                 double Aend = endAreas[i].Item2;
@@ -593,28 +620,20 @@ namespace Krill
                 dAreaSE(i, dindex, out dAstart, out dAend);
 
                 double temp = E * A * ep;
-                double startValT = temp / Astart / maxStressT - 1 + utilizationMargin;
                 double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
-                double endValT = temp / Aend / maxStressT - 1 + utilizationMargin;
                 double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
 
-                if (startValT > 0)
-                    utilization += 2 * startValT * E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart * maxStressT);
-                else if (startValC < 0)
+                if (startValC < 0)
                     utilization -= 2 * startValC * E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart * maxStressC);
 
-                if (endValT > 0)
-                    utilization += 2 * endValT * E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend * maxStressT);
-                else if (endValC < 0)
+                if (endValC < 0)
                     utilization -= 2 * endValC * E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend * maxStressC);
 
                 // Penalty
                 if (ep > 0)
                 {
-                    penalty += 2 * (Esteel * ep - fyd) * Esteel * deps;
-
-
-                    //penalty += 2 * (Esteel * ep * A) * Esteel * (deps * A + ep * dA);
+                    double stress = Esteel * ep;
+                    penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
                 }
             }
 
@@ -635,29 +654,36 @@ namespace Krill
                     E * (2 * A * l * deps * ep +
                     (dA * l + A * dl) * ep * ep);
 
+                // Reinforcement
+                if (ep > 0)
+                {
+                    reinforcement += 
+                        (2 * ep * l * dA * A +
+                        (deps * l + ep * dl) * A * A);
+                }
+
                 // Utilization
-                double valT = E * ep / maxStressT - 1 + utilizationMargin;
                 double valC = E * ep / (maxStressC * capacityReduction[ExtraElements[i].Item2]) + 1 - utilizationMargin;
 
-                if (valT > 0)
-                    utilization -= 2 * valT * E * deps / maxStressT;
-                else if (valC < 0)
+                if (valC < 0)
                     utilization += 2 * valC * E * deps / (maxStressC * capacityReduction[ExtraElements[i].Item2]);
 
                 // Penalty
                 if (ep > 0)
                 {
-                    penalty += 2 * (Esteel * ep - fyd) * Esteel * deps;
+                    double stress = Esteel * ep;
+                    penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
 
             return result;
         }
         private double ComputeDerivativeA(int dindex)
         {
             double strainEnergy = 0.0;
+            double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
 
@@ -670,44 +696,44 @@ namespace Krill
                 double ep = eps[i];
 
                 double deps = DstrainA(i, dus);
+                double dfactor = i == dindex ? 1 : 0;
 
                 // Strain Energy
                 double factor = ep < 0 ? 1 : strainFactor;
                 strainEnergy += factor *
-                    E * A * l * ep * (ep + 2 * areaFactor[i] * deps);
+                    E * A * l * ep * (ep * dfactor + 2 * areaFactor[i] * deps);
+
+                // Reinforcement
+                if (ep > 0)
+                {
+                    reinforcement += l * A * A * areaFactor[i] * (2 * dfactor * ep + areaFactor[i] * deps);
+                }
 
                 // Utilization
                 double Astart = endAreas[i].Item1;
                 double Aend = endAreas[i].Item2;
 
                 double temp = E * A * ep;
-                double startValT = temp / Astart / maxStressT - 1 + utilizationMargin;
                 double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
-                double endValT = temp / Aend / maxStressT - 1 + utilizationMargin;
                 double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
 
-                if (startValT > 0)
-                    utilization += 2 * startValT * E * deps * A / (endAreas[i].Item1 * maxStressT);
-                else if (startValC < 0)
+                if (startValC < 0)
                     utilization -= 2 * startValC * E * deps * A / (endAreas[i].Item1 * maxStressC);
 
-                if (endValT > 0)
-                    utilization += 2 * endValT * E * deps * A / (endAreas[i].Item2 * maxStressT);
-                else if (endValC < 0)
+                if (endValC < 0)
                     utilization -= 2 * endValC * E * deps * A / (endAreas[i].Item2 * maxStressC);
 
                 // Penalty
                 if (ep > 0)
                 {
-                    penalty += 2 * (Esteel * ep - fyd) * Esteel * deps;
-
-                    //penalty += 2 * (Esteel * ep * A) * Esteel * deps * A;
+                    double stress = Esteel * ep;
+                    penalty -= 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
 
-            return -result;
+            return -result * 0.01;
         }
 
         private double Area(int i)

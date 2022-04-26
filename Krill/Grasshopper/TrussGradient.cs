@@ -116,6 +116,11 @@ namespace Krill.Grasshopper
             double energy = energyTruss.ComputeValue();
             double gamma = 1;
             double stepLength = double.MaxValue;
+            if (energyTruss.mechanisim || double.IsNaN(energy))
+            {
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "The truss is an Mechanism and can not be solved. \n Occurred at iteration: 0");
+                energy = double.NaN;
+            }
             for (int i = 0; i < n; i++)
             {
                 if (energyTruss.mechanisim || double.IsNaN(energy))
@@ -125,16 +130,16 @@ namespace Krill.Grasshopper
                     break;
                 }
 
-                //energyTruss.ComputeGradient(ref gradient);
-                //energyTruss.ConstrainGradient(gradient);
+                energyTruss.ComputeGradient(ref gradient);
+                energyTruss.ConstrainGradient(gradient);
                 energyTruss.ComputeGradientA(ref gradientA);
                 energyTruss.ConstrainGradientA(gradientA);
                 energy = energyTruss.ArmijoStep(gradient, gradientA, ref a, out stepLength, gamma);
                 // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                if (stepLength < 1e-12)
+                if (stepLength < 1e-16)
                     break;
 
-                energyTruss.penaltyFactor *= 2;
+                //energyTruss.penaltyFactor *= 2;
             }
 
             // Post processing
