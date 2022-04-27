@@ -109,7 +109,7 @@ namespace Krill.Grasshopper
                             // Also check if it "skips" one node in between
                             if (InsideTest(l, mask) && 
                                 !AlreadyExistsTest(ind1, ind2, connections) &&
-                                l.MinimumDistanceTo(nodes[i]) > mask.delta)
+                                !SkipNodeTest(ind1, ind2, nodes, mask.delta))
                             {
                                 connections.Add(new Tuple<int, int>(ind1, ind2));
                                 trussLines.Add(l);
@@ -154,6 +154,22 @@ namespace Krill.Grasshopper
                 }
                 return false;
             }
+        }
+
+        static private bool SkipNodeTest(int ind1, int ind2, List<Point3d> nodes, double tol)
+        {
+            Line l = new Line(nodes[ind1], nodes[ind2]);
+
+            for (int i = 0; i < nodes.Count; i++)
+            {
+                if (i == ind1 || i == ind2)
+                    continue;
+
+                if (l.MinimumDistanceTo(nodes[i]) < tol)
+                    return true;
+            }
+
+            return false;
         }
 
         static private bool AlreadyExistsTest(int ind1, int ind2, List<Tuple<int, int>> connections)
