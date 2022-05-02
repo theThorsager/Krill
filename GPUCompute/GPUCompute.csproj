@@ -25,7 +25,7 @@
 		<Exec Command="xcopy &quot;$(TargetDir)System.Runtime.CompilerServices.Unsafe.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
 		<Exec Command="xcopy &quot;$(TargetDir)System.Text.Encodings.Web.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
 		<Exec Command="xcopy &quot;$(TargetDir)System.Threading.Tasks.Extensions.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
-		<Exec Command="xcopy &quot;$(TargetDir)../../../cl/peridynamics.cl&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
+		<Exec Command="xcopy &quot;$(TargetDir)..\..\..\cl\peridynamics.cl&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
 	</Target>
 </Project>
 

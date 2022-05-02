@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Grasshopper.Kernel;
 using Rhino.Geometry;
@@ -57,7 +58,7 @@ namespace Krill.Grasshopper
         /// <param name="DA">The DA object is used to retrieve from inputs and store in outputs.</param>
         protected override void SolveInstance(IGH_DataAccess DA)
         {
-            int n = 256;
+            int n = 16;
             int xi_n = 3;
 
             int N = n * n * n;
@@ -88,13 +89,17 @@ namespace Krill.Grasshopper
 
             wrapper.AssignBuffers(disp, vel, force, densities, bodyload, stiffness, xi, xi_n, n);
 
+            wrapper.SetKernelArguments(2, 1000.0f);
+
             wrapper.EnqueueKernel(n);
 
             wrapper.ReadBuffers(disp, n);
 
+            wrapper.ReleaseBuffers();
+
             GetValues(disp, ref dsp);
 
-            DA.SetData(0, dsp);
+            DA.SetDataList(0, dsp);
         }
         void GetValues(float[] floats, ref Vector3d[] res)
         {

@@ -49,9 +49,7 @@ namespace GPUCompute
         public string Init()
         {
             api = CL.GetApi();
-
             int err;
-
 
             // Platform
             err = api.GetPlatformIDs(1, out platform, null);
@@ -137,45 +135,45 @@ namespace GPUCompute
             {
                 GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
                 void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
-                dispA = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, dispPtr, &err);
-                dispB = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, dispPtr, &err);
+                dispA = api.CreateImage3D(context, CLEnum.MemReadWrite | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, dispPtr, &err);
+                dispB = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, null, &err);
                 dispH.Free();
             }
             {
                 GCHandle forceH = GCHandle.Alloc(force, GCHandleType.Pinned);
                 void* forcePtr = forceH.AddrOfPinnedObject().ToPointer();
-                this.force = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, forcePtr, &err);
+                this.force = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, null, &err);
                 forceH.Free();
             }
             {
                 GCHandle xiH = GCHandle.Alloc(xi, GCHandleType.Pinned);
                 void* xiPtr = xiH.AddrOfPinnedObject().ToPointer();
-                this.xi = api.CreateImage3D(context, CLEnum.MemReadOnly, image_format, (nuint)xi_n, (nuint)xi_n, (nuint)xi_n, 0, 0, xiPtr, &err);
+                this.xi = api.CreateImage3D(context, CLEnum.MemReadOnly | CLEnum.MemCopyHostPtr, image_format, (nuint)xi_n, (nuint)xi_n, (nuint)xi_n, 0, 0, xiPtr, &err);
                 xiH.Free();
             }
             {
                 GCHandle velH = GCHandle.Alloc(vel, GCHandleType.Pinned);
                 void* velPtr = velH.AddrOfPinnedObject().ToPointer();
-                this.velocityA = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, velPtr, &err);
-                this.velocityB = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, velPtr, &err);
+                this.velocityA = api.CreateImage3D(context, CLEnum.MemReadWrite | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, velPtr, &err);
+                this.velocityB = api.CreateImage3D(context, CLEnum.MemReadWrite, image_format, n, n, n, 0, 0, null, &err);
                 velH.Free();
             }
             {
                 GCHandle densH = GCHandle.Alloc(densities, GCHandleType.Pinned);
                 void* densPtr = densH.AddrOfPinnedObject().ToPointer();
-                this.densities = api.CreateImage3D(context, CLEnum.MemReadOnly, image_format, n, n, n, 0, 0, densPtr, &err);
+                this.densities = api.CreateImage3D(context, CLEnum.MemReadOnly | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, densPtr, &err);
                 densH.Free();
             }
             {
                 GCHandle bodyH = GCHandle.Alloc(bodyload, GCHandleType.Pinned);
                 void* bodyPtr = bodyH.AddrOfPinnedObject().ToPointer();
-                this.bodyload = api.CreateImage3D(context, CLEnum.MemReadOnly, image_format, n, n, n, 0, 0, bodyPtr, &err);
+                this.bodyload = api.CreateImage3D(context, CLEnum.MemReadOnly | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, bodyPtr, &err);
                 bodyH.Free();
             }
             {
                 GCHandle stiffH = GCHandle.Alloc(stiffness, GCHandleType.Pinned);
                 void* stiffPtr = stiffH.AddrOfPinnedObject().ToPointer();
-                this.stiffness = api.CreateImage3D(context, CLEnum.MemReadOnly, image_format, n, n, n, 0, 0, stiffPtr, &err);
+                this.stiffness = api.CreateImage3D(context, CLEnum.MemReadOnly | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, stiffPtr, &err);
                 stiffH.Free();
             }
         }
@@ -260,9 +258,9 @@ namespace GPUCompute
 
         public void EnqueueKernel(int n)
         {
-            int lsize = 256;
+            int lsize = 8;
             ReadOnlySpan<nuint> global_size = new nuint[] { (nuint)n, (nuint)n, (nuint)n };
-            ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)lsize, (nuint)lsize };
+            ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)4, (nuint)lsize };
 
             //ReadOnlySpan<nuint> global_size = new nuint[] { (nuint)n, (nuint)n };
             //ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)lsize };
@@ -289,6 +287,23 @@ namespace GPUCompute
             dispH.Free();
         }
 
+        public void ReleaseBuffers()
+        {
+            // Release Buffers
+            api.ReleaseMemObject(dispA);
+            api.ReleaseMemObject(dispB);
+
+            api.ReleaseMemObject(force);
+
+            api.ReleaseMemObject(xi);
+            api.ReleaseMemObject(velocityA);
+            api.ReleaseMemObject(velocityB);
+
+            api.ReleaseMemObject(densities);
+            api.ReleaseMemObject(bodyload);
+            api.ReleaseMemObject(stiffness);
+        }
+
         public void Finilize()
         {
             api.ReleaseKernel(kernel_forcesA);
@@ -296,12 +311,11 @@ namespace GPUCompute
             api.ReleaseKernel(kernel_dispA);
             api.ReleaseKernel(kernel_dispB);
 
-            // Release Buffers
-            
-
             api.ReleaseCommandQueue(queue);
             api.ReleaseProgram(program);
             api.ReleaseContext(context);
+
+            api.Dispose();
         }
 
     }
