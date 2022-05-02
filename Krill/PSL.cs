@@ -506,69 +506,77 @@ namespace Krill
 
                 avgNormal.Unitize();
 
-                startPt -= avgNormal * offsetTol;   // The method to find this pt needs to be clarified
+                Point3d[] startPts = new Point3d[2];
 
-                Plane norPl = new Plane(startPt, avgNormal);
+                startPts[0] = startPt - avgNormal * offsetTol;   // The method to find this pt needs to be clarified
+                startPts[1] = startPt + avgNormal * offsetTol;
 
-                Vector3d[] pIIIstartDirs = new Vector3d[4]
+                for (int indPt = 0; indPt < startPts.Length; indPt++)
                 {
+                    Plane norPl = new Plane(startPts[indPt], avgNormal);
+
+                    Vector3d[] pIIIstartDirs = new Vector3d[4]
+                    {
                     norPl.XAxis,
                     -norPl.XAxis,
                     norPl.YAxis,
                     -norPl.YAxis
-                };
-                
+                    };
 
-                for (int j = 0; j < pIIIstartDirs.Length; j++)
-                {
-                    Polyline loadPath = lPath.ConstructLoadPath(startPt, pIIIstartDirs[j], scaleDelta, false);
 
-                    if (!loadPath.IsValid)
-                        continue;
-
-                    //phaseIIcrvs.Add(loadPath);
-
-                    Curve potIII = Curve.CreateInterpolatedCurve(loadPath, 1);
-
-                    List<Tuple<double, Point3d>> tValsAndPts = new List<Tuple<double, Point3d>>();
-
-                    for (int ii = 0; ii < pI.Count; ii++)
+                    for (int j = 0; j < pIIIstartDirs.Length; j++)
                     {
-                        if (potIII.ClosestPoint(pI[ii].endPt, out double t, intTol))
+                        Polyline loadPath = lPath.ConstructLoadPath(startPts[indPt], pIIIstartDirs[j], scaleDelta, false);
+
+                        if (!loadPath.IsValid)
+                            continue;
+
+                        //phaseIIcrvs.Add(loadPath);
+
+                        Curve potIII = Curve.CreateInterpolatedCurve(loadPath, 1);
+
+                        List<Tuple<double, Point3d>> tValsAndPts = new List<Tuple<double, Point3d>>();
+
+                        for (int ii = 0; ii < pI.Count; ii++)
                         {
-                            tValsAndPts.Add(new Tuple<double, Point3d>(t, pI[ii].endPt));
+                            if (potIII.ClosestPoint(pI[ii].endPt, out double t, intTol))
+                            {
+                                tValsAndPts.Add(new Tuple<double, Point3d>(t, pI[ii].endPt));
+                            }
                         }
-                    }
 
-                    for (int ii = 0; ii < pII.Count; ii++)
-                    {
-                        if (potIII.ClosestPoint(pII[ii].endPt, out double t, intTol))
+                        for (int ii = 0; ii < pII.Count; ii++)
                         {
-                            tValsAndPts.Add(new Tuple<double, Point3d>(t, pII[ii].endPt));
+                            if (potIII.ClosestPoint(pII[ii].endPt, out double t, intTol))
+                            {
+                                tValsAndPts.Add(new Tuple<double, Point3d>(t, pII[ii].endPt));
+                            }
                         }
-                    }
 
-                    List<Point3d> pts = new List<Point3d>();
+                        List<Point3d> pts = new List<Point3d>();
 
-                    if (tValsAndPts.Count > 1)
-                    {
-                        tValsAndPts = tValsAndPts.OrderBy(x => x.Item1).ToList();
-
-                        for (int ii = 0; ii < tValsAndPts.Count; ii++)
+                        if (tValsAndPts.Count > 1)
                         {
-                            pts.Add(tValsAndPts[ii].Item2);
+                            tValsAndPts = tValsAndPts.OrderBy(x => x.Item1).ToList();
+
+                            for (int ii = 0; ii < tValsAndPts.Count; ii++)
+                            {
+                                pts.Add(tValsAndPts[ii].Item2);
+                            }
                         }
-                    }
 
-                    if (pts.Count > 1)
-                    {
-                        for (int ii = 0; ii < pts.Count - 1; ii++)
+                        if (pts.Count > 1)
                         {
-                            Line l = new Line(pts[ii], pts[ii + 1]);
-                            truss.Add(l);
+                            for (int ii = 0; ii < pts.Count - 1; ii++)
+                            {
+                                Line l = new Line(pts[ii], pts[ii + 1]);
+                                truss.Add(l);
+                            }
                         }
                     }
                 }
+
+                
 
             }
         }
@@ -665,17 +673,20 @@ namespace Krill
                 vonAtCurve.Add(LERPvonMises(polyline[i]));
             }
 
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 15; i++)
             {
                 vonAtCurve = SmoothData(vonAtCurve, 1);
             }
 
-            double vonCutOff = vonAtCurve.Max() * 0.333;
+            //double vonCutOff = vonAtCurve.Max() * 0.333;
+            double vonCutOff = vonAtCurve.Max() * 0.1;
 
-            for (int i = 1; i < vonAtCurve.Count - 1; i++)
+            for (int i = 2; i < vonAtCurve.Count - 2; i++)
             {
                 if (vonAtCurve[i] > vonAtCurve[i - 1] &&
                     vonAtCurve[i] > vonAtCurve[i + 1] &&
+                    vonAtCurve[i] > vonAtCurve[i - 2] &&
+                    vonAtCurve[i] > vonAtCurve[i + 2] &&
                     vonAtCurve[i] > vonCutOff)
                 {
                     double bcTol = tol;
