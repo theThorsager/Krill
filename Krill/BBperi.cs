@@ -547,11 +547,9 @@ namespace Krill
                         accVoxels.cellValues[I].Z /= densities.cellValues[I].Z;
 
                         accVoxels.cellValues[I] -= c * velVoxels.cellValues[I];
-                        velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
+                        velVoxels.cellValues[I] += accVoxels.cellValues[I];
 
-                        dispVoxels.cellValues[I] += velVoxels.cellValues[I] + 0.5 * accVoxels.cellValues[I];
-
-                        velVoxels.cellValues[I] += 0.5 * accVoxels.cellValues[I];
+                        dispVoxels.cellValues[I] += velVoxels.cellValues[I];
                     }
                 }
             }
