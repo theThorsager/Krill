@@ -34,6 +34,8 @@ namespace Krill.Grasshopper.Param
         {
             pManager.AddPointParameter("points", "pts", "", GH_ParamAccess.list);
             pManager.AddVectorParameter("displacements", "disp", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("utilization", "util", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("weighting", "weighting", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -49,9 +51,13 @@ namespace Krill.Grasshopper.Param
 
             var points = Voxels<bool>.GetPoints(res.Value.mask, res.Value.displacments, 0, 0x000000FF);
             var displacemnts = res.Value.displacments.GetValues(res.Value.mask, 0x000000FF);
+            var utilisations = res.Value.utilization?.GetValues(res.Value.mask, 0x000000FF);
+            var weighting = res.Value.weighting?.GetValues(res.Value.mask, 0x000000FF);
 
             DA.SetDataList(0, points);
             DA.SetDataList(1, displacemnts);
+            DA.SetDataList(2, utilisations);
+            DA.SetDataList(3, weighting);
         }
 
         /// <summary>

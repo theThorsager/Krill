@@ -14,5 +14,13 @@ namespace Krill.Containers
         public Voxels<Vector3d> displacments { get; set; } = null;
         public List<BoundaryConditionNuemann> boundaryConditions { get; set; } = null;
         public double peridelta { get; set; } = 0;
+        public Voxels<Vector3d[]> principalDirections { get; set; } = null;
+        public double elasticModulus { get; set; } = 0;
+        public int[] nList { get; set; } = null;
+        public double bondStiffness { get; set; } = 0;
+        public Voxels<Vector3d> springs { get; set; } = null;
+        public Voxels<Vector3d> bodyload { get; set; } = null;
+        public Voxels<double> utilization { get; set; } = null;
+        public Voxels<double> weighting { get; set; } = null;
     }
 }

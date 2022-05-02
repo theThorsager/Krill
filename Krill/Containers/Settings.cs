@@ -16,6 +16,7 @@ namespace Krill.Containers
         public int n_timesteps { get; set; } = 10000;
         // BondStiffness
         public double bond_stiffness { get; set; } = 100000;
+        public double bond_stiffness2d { get; set; } = 100000;
         // Youngs
         public double E { get; set; } = 1000;
     }

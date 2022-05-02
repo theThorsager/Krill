@@ -47,27 +47,90 @@ namespace Krill.Grasshopper.Param
         {
             double Delta = 0;
             double delta = 0;
-            int n = 0;
+            int n_t = 0;
             double E = 0;
 
             DA.GetData(0, ref Delta);
             DA.GetData(1, ref delta);
-            DA.GetData(2, ref n);
+            DA.GetData(2, ref n_t);
             DA.GetData(3, ref E);
+
+            if (delta <= Math.Sqrt(2))
+            {
+                this.AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "delta is clamped to sqrt(2)");
+                delta = Math.Sqrt(2) + 0.0001;
+            }
 
             // E to bondstiffness, see: Peridigm User Guide
             double d = Delta * delta;
             double K3d = E / (3.0 * (1.0 - 2.0 * 0.25));
-            double c = 18.0 * K3d / (Math.PI * d * d * d * d);
+            
+            //double c = Analytical(K3d, d);
+            //double c = StiffnessMod(K3d, Delta);
+            //double c = VolumeCorr(K3d, Delta, delta);
+            //c = Analytical2d(E, d);
 
-            DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings() 
-            { 
-                Delta = Delta, 
-                delta = delta, 
-                bond_stiffness = c, 
-                n_timesteps = n, 
+            DA.SetData(0, new SettingsGoo(new Krill.Containers.Settings()
+            {
+                Delta = Delta,
+                delta = delta,
+                bond_stiffness = VolumeCorr(K3d, Delta, delta),
+                bond_stiffness2d = VolumeCorr2d(E, Delta, delta),
+                n_timesteps = n_t,
                 E = E
             }));
+        }
+
+        private double VolumeCorr(double K3d, double Delta, double delta)
+        {
+            int n = (int)Math.Ceiling(delta) * 2 + 1;
+            int[] off = Utility.GetNeighbourOffsets(n, delta);
+            Voxels<bool> dummy = new Voxels<bool>(Point3d.Origin, Delta, n);
+            double c = 0;
+            double volume = Delta * Delta * Delta;
+            int I = dummy.ToLinearIndex(n / 2, n / 2, n / 2);
+            for (int i = 0; i < off.Length; i++)
+            {
+                double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
+                c += volume * distance * 2;     // times two due to symmetry
+            }
+            return 18 * K3d / c;
+        }
+
+        private double VolumeCorr2d(double E, double Delta, double delta)
+        {
+            double K2D = E / (2.0 * (1.0 - 0.333333333));
+
+            int n = (int)Math.Ceiling(delta) * 2 + 1;
+            int[] off = Utility.GetNeighbourOffsets2d(n, delta);
+            Voxels2d<bool> dummy = new Voxels2d<bool>(Point2d.Origin, Delta, n);
+            double c = 0;
+            double volume = Delta * Delta;
+            int I = dummy.ToLinearIndex(n / 2, n / 2);
+            for (int i = 0; i < off.Length; i++)
+            {
+                double distance = (dummy.IndexToPoint(I) - dummy.IndexToPoint(I + off[i])).Length;
+                c += volume * distance * 2;     // times two due to symmetry
+            }
+            return 8 * K2D / c;
+        }
+
+        private double StiffnessMod(double K3d, double Delta)
+        {
+            return 18 * K3d / (Delta * Delta * Delta);
+        }
+
+        private double Analytical(double K3d, double d)
+        {
+            // E to bondstiffness, see: Peridigm User Guide
+            return 18.0 * K3d / (Math.PI * d * d * d * d);
+        }
+
+        private double Analytical2d(double E, double d)
+        {
+            double K2D = E / (2.0 * (1.0 - 0.333333333));
+            // E to bondstiffness, see: Peridigm User Guide
+            return 12.0 * K2D / (Math.PI * d * d * d);
         }
 
         /// <summary>

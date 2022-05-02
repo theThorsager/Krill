@@ -10,7 +10,6 @@ namespace Krill
     class MeshToPoints
     {
         Mesh mesh;
-        int index = 0;
 
         public Voxels<int> voxels;
 
@@ -30,16 +29,21 @@ namespace Krill
             int nPadding = (int)Math.Floor(delta);
 
             // Temporary
-            nPadding *= 2;
+            //nPadding *= 2;
 
             int n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate) / Delta + 0.002);
             n += nPadding * 2;
             Point3d origin = bbox.Min - new Vector3d(
-                (nPadding + 0.001) * Delta, 
-                (nPadding + 0.001) * Delta, 
-                (nPadding + 0.001) * Delta);
+                (nPadding) * Delta, 
+                (nPadding) * Delta, 
+                (nPadding) * Delta);
 
             voxels = new Voxels<int>(origin, Delta, n);
+        }
+
+        public MeshToPoints(Voxels<int> mask)
+        {
+            voxels = mask;
         }
 
         public void FillBoundaryValues(int newvalue = 1)
@@ -173,7 +177,7 @@ namespace Krill
                 foreach (int i in indecies)
                 {
                     Point3d p = voxels.IndexToPoint(i);
-                    for (int j = 0; j < voxels.delta * delta / del; j++)
+                    for (int j = (int)-(voxels.delta * delta / del); j < voxels.delta * delta / del; j++)
                     {
                         pts.Add(p + normal * j);
                     }
@@ -184,14 +188,12 @@ namespace Krill
                 foreach (Point3d pt in pts)
                 {
                     int i = voxels.PointToIndex(pt);
-                    if (voxels.cellValues[i] == 0)
-                        voxels.cellValues[i] = newvalue;
-
+                    voxels.cellValues[i] |= newvalue;
                 }
             }
         }
 
-        public void SetBC(Containers.IBoundaryCondition bc, double delta, int val)
+        public void SetBCD(Containers.IBoundaryCondition bc, double delta, int val)
         {
             Mesh temp = mesh;
             mesh = bc.area;
@@ -200,46 +202,50 @@ namespace Krill
             mesh = temp;
         }
 
-
-        public void FillInternalValues()
+        public void SetBCN(Containers.IBoundaryCondition bc, double delta, int val)
         {
-            while (FindFirstInside(0, true, out Coord coord))
+            Mesh temp = mesh;
+            mesh = bc.area;
+            FillBoundaryValuesBC(val, delta);
+
+            mesh = temp;
+        }
+
+        public void RefineBoundaries()
+        {
+            for (int i = 0; i < voxels.cellValues.Length; i++)
             {
-                FloodFill(coord, 0, 2);
+                if (voxels.cellValues[i] == 1)
+                {
+                    Point3d pt = voxels.IndexToPoint(i);
+                    bool inside = mesh.IsPointInside(pt, 0, true);
+                    voxels.cellValues[i] = inside ? 1 : 0;
+                }
             }
         }
 
-        bool FindFirstInside(int val, bool inside, out Coord coord)
+        public void FillInternalValues()
         {
             // Find a cell with the right value
             // check if it is inside the mesh, else iterate until the we pass a border again
             // Uses a global index such that a new interior point is found each time the method is called, until all points are found
-            for (; index < voxels.cellValues.Length; index++)
+            for (int index = 0; index < voxels.cellValues.Length; index++)
             {
-                if (voxels.cellValues[index] != val)
+                if (voxels.cellValues[index] != 0)
                     continue;
 
-                if (mesh.IsPointInside(voxels.IndexToPoint(index), 1e-3, true) != inside)
+                if (mesh.IsPointInside(voxels.IndexToPoint(index), 1e-3, true))
                 {
-                    index++;
-                    for (; index < voxels.cellValues.Length; index++)
-                    {
-                        if (voxels.cellValues[index] != val)
-                            break;
-                    }
+                    FloodFill(voxels.IndexToCoord(index), 0, 2);
                 }
                 else
                 {
-                    coord = voxels.IndexToCoord(index);
-                    index++;
-                    return true;
+                    FloodFill(voxels.IndexToCoord(index), 0, 8);
                 }
             }
 
-            coord = new Coord();
-            return false;
+            voxels.SetValues(voxels, 8, 0);
         }
-
 
         public void FloodFill(Coord first, int from, int to)
         {

@@ -29,5 +29,6 @@ namespace Krill.Containers
         public bool lockY { get; set; } = true;
         public bool lockZ { get; set; } = true;
         public Plane Coordinate { get; set; } = Plane.WorldXY;
+        public int tag { get; set; } = -1;
     }
 }

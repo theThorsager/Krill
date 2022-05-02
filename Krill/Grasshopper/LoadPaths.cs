@@ -17,11 +17,11 @@ namespace Krill.Grasshopper
         public LoadPaths()
           : base("LoadPaths", "LoadP",
               "Description",
-              "Krill", "Solvers")
+              "Krill", "Utility")
         {
             BaseWorker = new LoadPathsWorker();
         }
-
+        
         public override void RemovedFromDocument(GH_Document document)
         {
             this.RequestCancellation();
@@ -43,7 +43,7 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterInputParams(GH_Component.GH_InputParamManager pManager)
         {
-            pManager.AddParameter(new Param.LinearSolutionParam());
+            pManager.AddParameter(new Param.PostProcessingResultsParam());
             pManager.AddPointParameter("StartPoints", "pts", "", GH_ParamAccess.list);
             pManager.AddVectorParameter("StartVectors", "vecs", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("ScaleFactorForDelta", "sf", "", GH_ParamAccess.item);
@@ -55,7 +55,6 @@ namespace Krill.Grasshopper
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddCurveParameter("curve", "c", "", GH_ParamAccess.list);
-            // pManager.AddCurveParameter("curve2", "c2", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -90,7 +89,7 @@ namespace Krill.Grasshopper
 
     class LoadPathsWorker : WorkerInstance
     {
-        Containers.LinearSolution linearSolution = null;
+        Containers.PostProcessingResults post = null;
         List<Polyline> pLine { get; set; } = null;
         List<Point3d> startPoints { get; set; }
         List<Vector3d> startVectors { get; set; }
@@ -101,39 +100,43 @@ namespace Krill.Grasshopper
         public override void DoWork(Action<string, double> ReportProgress, Action Done)
         {
             if (CancellationToken.IsCancellationRequested) return;
-
+            if (post is null)
+                return;
             // ...
             ReportProgress(Id, 0);
             pLine = new List<Polyline>();
 
-            Voxels<int> startVoxels = linearSolution.mask;
-            Voxels<Vector3d> dispVoxels = linearSolution.displacments;
+            //OutputResults outputR = new OutputResults(post);
+            //outputR.UpdateFakeStrains(post.displacments);
+            //outputR.UpdateStresses();
+            //outputR.UpdateVonMises();
+            //outputR.UpdatePrincipalStresses();
 
-            double pDelta = linearSolution.peridelta;
+            Voxels<int> startVoxels = post.mask;
+            Voxels<Vector3d[]> princpDirections = post.princpDir;
            
             int n = startVoxels.n;
-            int[] neighOff = Utility.GetNeighbourOffsets(n, pDelta);
 
-            // Generating principal stresses, setting the elastic modulus to 1 since the actual stresses are not important, only the relation.
-            OutputResults output = new OutputResults(startVoxels, neighOff, 1, 0.25);
-            output.UpdateStrains(dispVoxels);
-            output.UpdateStresses();
-            output.UpdatePrincipalStresses();
             if (CancellationToken.IsCancellationRequested)
                 return;
+
+            LoadPathCurve lPath = new LoadPathCurve(startVoxels, princpDirections, post.princpStress);
 
             for (int i = 0; i < startPoints.Count; i++)
             {
+                ReportProgress(Id, (double)i / startPoints.Count);
+
                 if (CancellationToken.IsCancellationRequested)
                     return;
-                LoadPathCurve lPath = new LoadPathCurve(startVoxels, startPoints[i], startVectors[i], output.princpDir, output.princpStress);
 
-                lPath.ConstructLoadPath(scaleDelta);
-
-                pLine.Add(lPath.loadPath);
+                Polyline loadPath = lPath.ConstructLoadPath(startPoints[i], startVectors[i], scaleDelta, false);
+                pLine.Add(loadPath);
             }
+            ReportProgress(Id, 1);
+
             if (CancellationToken.IsCancellationRequested)
                 return;
+
             Done();
         }
 
@@ -141,9 +144,11 @@ namespace Krill.Grasshopper
 
         public override void GetData(IGH_DataAccess DA, GH_ComponentParamServer Params)
         {
-            Param.LinearSolutionGoo res = null;
+            Param.PostProcessingResultsGoo res = null;
             DA.GetData(0, ref res);
-            linearSolution = res.Value;
+            if (res is null)
+                return;
+            post = res.Value;
 
             List<Point3d> startPts = new List<Point3d>();
             DA.GetDataList(1, startPts);

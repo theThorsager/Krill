@@ -120,11 +120,6 @@ namespace Krill.Grasshopper
             if (settings is null)
                 settings = new Settings();
 
-            if (settings.delta <= Math.Sqrt(2))
-            {
-                this.Parent.AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "delta is clamped to sqrt(2)");
-                settings.delta = Math.Sqrt(2) + 0.0001;
-            }
             if (CancellationToken.IsCancellationRequested) return;
 
             Stopwatch watchsetup = new Stopwatch();
@@ -135,6 +130,7 @@ namespace Krill.Grasshopper
             MeshToPoints meshToPoints = new MeshToPoints(mesh, settings.Delta, settings.delta);
             meshToPoints.FillBoundaryValues();
             meshToPoints.FillInternalValues();
+            meshToPoints.RefineBoundaries();
 
             Voxels<int> mask = meshToPoints.voxels;
 
@@ -145,7 +141,7 @@ namespace Krill.Grasshopper
             BBperi model = new BBperi(mask, settings.bond_stiffness, neighOff, 
                 settings.Delta * settings.Delta * settings.Delta,
                 settings.delta);
-
+            model.kernel = Utility.getKernelWeights(mask.n, settings.delta, neighOff);
             watchsetup.Stop();
 
             Utility.SetValuesOutsideBBox(
@@ -154,7 +150,8 @@ namespace Krill.Grasshopper
                 mesh.GetBoundingBox(true), 
                 0x00000100, // mask
                 x => AnalyticalSolutions.SphericalCavity(x, a, sigma, settings.E, 0.25));
-
+            model.SetVolumes();
+            model.SetVolumesStiffness();
             conduit.mask = mask;
 
             int n = mask.n;
@@ -169,30 +166,34 @@ namespace Krill.Grasshopper
             {
                 // compute the acceleration
                 model.UpdateForce();
-                double c = model.CalculateDampening();
+                double c = 0.1; // model.CalculateDampening();
                 // Verlet integration, to update pos
                 model.UpdateDisp(c);
 
-                double residual = model.ComputeResidual();
-                if (i % 10 == 0)
-                {
-                    if (CancellationToken.IsCancellationRequested) return;
+                //double residual = model.ComputeResidual();
+                //if (i % 10 == 0)
+                //{
+                if (CancellationToken.IsCancellationRequested) return;
 
-                    conduit.SetDisplacments(model.dispVoxels);
-                    conduit.Update();
-                    
-                    if (i == 0)
-                    {
-                        residual_scale = Math.Log(residual);
-                        ReportProgress(Id, 0);
-                    }
-                    else
-                        ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol );
-                }
+                conduit.SetDisplacments(model.dispVoxels);
+                conduit.Update();
 
-                // Check termination criteria
-                if (residual < tolerance)
-                    break;
+                //    if (i == 0)
+                //    {
+                //        residual_scale = Math.Log(residual);
+                //        ReportProgress(Id, 0);
+                //    }
+                //    else
+                //        ReportProgress(Id, (Math.Log(residual) - residual_scale) / logtol );
+                //}
+
+                //// Check termination criteria
+                //if (residual < tolerance)
+                //    break;
+
+
+                ReportProgress(Id, (double)i / settings.n_timesteps);
+
             }
             watchloop.Stop();
             // Display data

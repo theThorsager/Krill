@@ -9,9 +9,14 @@
   </PropertyGroup>
   
   <ItemGroup>
+    <PackageReference Include="BriefFiniteElement.Net" Version="2.0.0-pre" />
     <PackageReference Include="Grasshopper" Version="7.14.22010.17001" IncludeAssets="compile;build" />
     <PackageReference Include="GrasshopperAsyncComponent" Version="1.2.3" />
     <PackageReference Include="RhinoCommon" Version="7.14.22010.17001" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   
   <PropertyGroup Condition="$(Configuration) == 'Debug' AND $([MSBuild]::IsOSPlatform(Windows))">
@@ -22,7 +27,10 @@
   
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
     <Exec Command="xcopy &quot;$(TargetDir)$(TargetFileName)&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
-    <Exec Command="xcopy &quot;$(TargetDir)GrasshopperAsyncComponent.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
+	  <Exec Command="xcopy &quot;$(TargetDir)GrasshopperAsyncComponent.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
+	  <Exec Command="xcopy &quot;$(TargetDir)BriefFiniteElementNet.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
+	  <Exec Command="xcopy &quot;$(TargetDir)BriefFiniteElementNet.Common.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
+	  <Exec Command="xcopy &quot;$(TargetDir)CSparse.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
   </Target>
 
 </Project>
