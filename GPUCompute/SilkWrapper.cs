@@ -30,6 +30,13 @@ namespace GPUCompute
         nint kernel_residuals;
         nint kernel_reduce_resid;
 
+        nint kernel_c_dampA;
+        nint kernel_c_dampB;
+        nint kernel_reduce_dampA;
+        nint kernel_reduce_dampB;
+        nint kernel_set_dampA;
+        nint kernel_set_dampB;
+
         nint kernel_test;
 
         // Buffers
@@ -52,7 +59,9 @@ namespace GPUCompute
         nint buffer_residual_inner;
         nint buffer_residual;
 
-        nint buffer_dampening;
+        nint buffer_dampeningA;
+        nint buffer_dampeningB;
+        nint buffer_dampeningC;
 
         // 
         bool even = true;
@@ -150,6 +159,7 @@ namespace GPUCompute
             if (err < 0)
                 return "No Queue";
 
+            // Force
             string kernel_name = "update_force";
             kernel_forcesA = api.CreateKernel(program, kernel_name, out err);
             if (err < 0)
@@ -158,6 +168,7 @@ namespace GPUCompute
             if (err < 0)
                 return $"Could not create kernel: {kernel_name}";
 
+            // Displacement
             kernel_name = "update_displacement";
             kernel_dispA = api.CreateKernel(program, kernel_name, out err);
             if (err < 0)
@@ -166,6 +177,7 @@ namespace GPUCompute
             if (err < 0)
                 return $"Could not create kernel: {kernel_name}";
 
+            // Residual
             kernel_name = "compute_residual";
             kernel_residuals = api.CreateKernel(program, kernel_name, out err);
             if (err < 0)
@@ -175,9 +187,30 @@ namespace GPUCompute
             if (err < 0)
                 return $"Could not create kernel: {kernel_name}";
 
+            // Dampening
+            kernel_name = "compute_dampening";
+            kernel_c_dampA = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
+            kernel_c_dampB = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
+            kernel_name = "reduce_dampening";
+            kernel_reduce_dampA = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
+            kernel_reduce_dampB = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
+            kernel_name = "set_dampining";
+            kernel_set_dampA = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
+            kernel_set_dampB = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
 
-
-
+            // Test
             kernel_name = "test";
             kernel_test = api.CreateKernel(program, kernel_name, out err);
             if (err < 0)
@@ -250,6 +283,9 @@ namespace GPUCompute
             buffer_residual = api.CreateBuffer(context, CLEnum.MemWriteOnly, (nuint)(size * sizeof(float)), null, &err);
 
             // Dampening
+            buffer_dampeningA = api.CreateBuffer(context, CLEnum.MemReadWrite, 2 * n * n * n * sizeof(float), null, &err);
+            buffer_dampeningB = api.CreateBuffer(context, CLEnum.MemReadWrite, (nuint)(2 * size * sizeof(float)), null, &err);
+            buffer_dampeningC = api.CreateBuffer(context, CLEnum.MemReadWrite, sizeof(float), null, &err);
         }
 
         //public void AssignBuffers2d(float[] disp, float[] vel, float[] force,
@@ -324,7 +360,7 @@ namespace GPUCompute
             api.SetKernelArg(kernel_dispA, 3, (nuint)sizeof(nint), velocityB);
             api.SetKernelArg(kernel_dispA, 4, (nuint)sizeof(nint), forceA);
             api.SetKernelArg(kernel_dispA, 5, (nuint)sizeof(nint), densities);
-            api.SetKernelArg(kernel_dispA, 6, (nuint)sizeof(float), 0.1f);
+            api.SetKernelArg(kernel_dispA, 6, (nuint)sizeof(nint), buffer_dampeningC);
 
             api.SetKernelArg(kernel_dispB, 0, (nuint)sizeof(nint), dispB);
             api.SetKernelArg(kernel_dispB, 1, (nuint)sizeof(nint), dispA);
@@ -332,7 +368,7 @@ namespace GPUCompute
             api.SetKernelArg(kernel_dispB, 3, (nuint)sizeof(nint), velocityA);
             api.SetKernelArg(kernel_dispB, 4, (nuint)sizeof(nint), forceB);
             api.SetKernelArg(kernel_dispB, 5, (nuint)sizeof(nint), densities);
-            api.SetKernelArg(kernel_dispB, 6, (nuint)sizeof(float), 0.1f);
+            api.SetKernelArg(kernel_dispB, 6, (nuint)sizeof(nint), buffer_dampeningC);
 
             // Compute Residual
             api.SetKernelArg(kernel_residuals, 0, (nuint)sizeof(nint), forceA);
@@ -340,13 +376,42 @@ namespace GPUCompute
 
             api.SetKernelArg(kernel_reduce_resid, 0, (nuint)sizeof(nint), buffer_residual_inner);
             api.SetKernelArg(kernel_reduce_resid, 1, (nuint)sizeof(nint), buffer_residual);
-            api.SetKernelArg(kernel_reduce_resid, 2, (nuint)(256*sizeof(float)), null);
+            api.SetKernelArg(kernel_reduce_resid, 2, (nuint)(256 * sizeof(float)), null);
             int size = 256;
             int num = n * n * n;
             api.SetKernelArg(kernel_reduce_resid, 3, (nuint)sizeof(int), &num);
             api.SetKernelArg(kernel_reduce_resid, 4, (nuint)sizeof(int), &size);
 
             // Compute Dampening
+            api.SetKernelArg(kernel_c_dampA, 0, (nuint)sizeof(nint), forceA);
+            api.SetKernelArg(kernel_c_dampA, 1, (nuint)sizeof(nint), forceB);
+            api.SetKernelArg(kernel_c_dampA, 2, (nuint)sizeof(nint), velocityA);
+            api.SetKernelArg(kernel_c_dampA, 3, (nuint)sizeof(nint), densities);
+            api.SetKernelArg(kernel_c_dampA, 4, (nuint)sizeof(nint), dispA);
+            api.SetKernelArg(kernel_c_dampA, 5, (nuint)sizeof(nint), buffer_dampeningA);
+
+            api.SetKernelArg(kernel_c_dampB, 0, (nuint)sizeof(nint), forceA);
+            api.SetKernelArg(kernel_c_dampB, 1, (nuint)sizeof(nint), forceB);
+            api.SetKernelArg(kernel_c_dampB, 2, (nuint)sizeof(nint), velocityB);
+            api.SetKernelArg(kernel_c_dampB, 3, (nuint)sizeof(nint), densities);
+            api.SetKernelArg(kernel_c_dampB, 4, (nuint)sizeof(nint), dispB);
+            api.SetKernelArg(kernel_c_dampB, 5, (nuint)sizeof(nint), buffer_dampeningA);
+
+            api.SetKernelArg(kernel_reduce_dampA, 0, (nuint)sizeof(nint), buffer_dampeningA);
+            api.SetKernelArg(kernel_reduce_dampA, 1, (nuint)sizeof(nint), buffer_dampeningB);
+            api.SetKernelArg(kernel_reduce_dampA, 2, (nuint)(2 * 256 * sizeof(float)), null);
+            api.SetKernelArg(kernel_reduce_dampA, 4, (nuint)sizeof(int), &size);
+
+            api.SetKernelArg(kernel_reduce_dampB, 0, (nuint)sizeof(nint), buffer_dampeningB);
+            api.SetKernelArg(kernel_reduce_dampB, 1, (nuint)sizeof(nint), buffer_dampeningA);
+            api.SetKernelArg(kernel_reduce_dampB, 2, (nuint)(2 * 256 * sizeof(float)), null);
+            api.SetKernelArg(kernel_reduce_dampB, 4, (nuint)sizeof(int), &size);
+
+            api.SetKernelArg(kernel_set_dampA, 0, (nuint)sizeof(nint), buffer_dampeningA);
+            api.SetKernelArg(kernel_set_dampA, 1, (nuint)sizeof(nint), buffer_dampeningC);
+
+            api.SetKernelArg(kernel_set_dampB, 0, (nuint)sizeof(nint), buffer_dampeningB);
+            api.SetKernelArg(kernel_set_dampB, 1, (nuint)sizeof(nint), buffer_dampeningC);
         }
 
         public void EnqueueKernel(int n)
@@ -361,18 +426,45 @@ namespace GPUCompute
             //ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)lsize };
 
             int err = api.EnqueueNdrangeKernel(queue, even ? kernel_forcesA : kernel_forcesB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
-            UpdateDampening();
+            api.Finish(queue);
+            UpdateDampening(n);
+            api.Finish(queue);
             err = api.EnqueueNdrangeKernel(queue, even ? kernel_dispA : kernel_dispB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
+            api.Finish(queue);
             even = !even;
         }
 
-        void UpdateDampening()
+        void UpdateDampening(int n)
         {
+            int lsize = 8;
+            ReadOnlySpan<nuint> global_size = new nuint[] { (nuint)n, (nuint)n, (nuint)n };
+            ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)4, (nuint)lsize };
+            ReadOnlySpan<nuint> offset = new nuint[] { 0, 0, 0 };
             // compute dampening
+            int err = api.EnqueueNdrangeKernel(queue, even ? kernel_c_dampA : kernel_c_dampB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
+            api.Finish(queue);
 
             // reduce loop
+            bool outputA = true;
+            int n_output = n * n * n;
+            int g_size;
+            int l_size = 256;
+            while (n_output != 1)
+            {
+                err = api.SetKernelArg(outputA ? kernel_reduce_dampA : kernel_reduce_dampB, 3, (nuint)sizeof(int), &n_output);
+
+                g_size = (int)Math.Ceiling(n_output / (double)256);
+                n_output = (int)Math.Ceiling(g_size / (double)l_size);
+                g_size = n_output * l_size;
+
+                err = api.EnqueueNdrangeKernel(queue, outputA ? kernel_reduce_dampA : kernel_reduce_dampB, 1, 0, (nuint)g_size, (nuint)l_size, 0, (nint*)null, (nint*)null);
+                api.Finish(queue);
+                outputA = !outputA;
+            }
 
             // set_dampening
+            err = api.EnqueueNdrangeKernel(queue, outputA ? kernel_set_dampA : kernel_set_dampB, 1, 0, 1, 1, 0, (nint*)null, (nint*)null);
+            api.Finish(queue);
         }
 
         public float CheckResidual(int n, float F, int n_particles)
@@ -452,6 +544,13 @@ namespace GPUCompute
             api.ReleaseMemObject(densities);
             api.ReleaseMemObject(bodyload);
             api.ReleaseMemObject(stiffness);
+
+            api.ReleaseMemObject(buffer_residual);
+            api.ReleaseMemObject(buffer_residual_inner);
+
+            api.ReleaseMemObject(buffer_dampeningA);
+            api.ReleaseMemObject(buffer_dampeningB);
+            api.ReleaseMemObject(buffer_dampeningC);
         }
 
         public void Finilize()
@@ -460,6 +559,16 @@ namespace GPUCompute
             api.ReleaseKernel(kernel_forcesB);
             api.ReleaseKernel(kernel_dispA);
             api.ReleaseKernel(kernel_dispB);
+
+            api.ReleaseKernel(kernel_residuals);
+            api.ReleaseKernel(kernel_reduce_resid);
+
+            api.ReleaseKernel(kernel_c_dampA);
+            api.ReleaseKernel(kernel_c_dampB);
+            api.ReleaseKernel(kernel_reduce_dampA);
+            api.ReleaseKernel(kernel_reduce_dampB);
+            api.ReleaseKernel(kernel_set_dampA);
+            api.ReleaseKernel(kernel_set_dampB);
 
             api.ReleaseCommandQueue(queue);
             api.ReleaseProgram(program);

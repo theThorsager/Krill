@@ -1,13 +1,13 @@
 ﻿#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
+#define TOL 0.001
+
 const sampler_t imagesampler = 
         CLK_FILTER_NEAREST | 
         CLK_ADDRESS_CLAMP | 
         CLK_NORMALIZED_COORDS_FALSE;
 
 // Only displacment needs to be an image ?
-// Bodyload is assumed to already be normilized
-// bondstiffness should include volume
 __kernel void update_force(
     read_only image3d_t disp_im, 
     read_only image3d_t bodyload_im, 
@@ -60,9 +60,54 @@ __kernel void update_force(
     }
 }
 
-__kernel void compute_dampening()
-{
 
+__kernel void compute_dampening(
+    read_only image3d_t forceA_im,
+    read_only image3d_t forceB_im,
+    read_only image3d_t vel_im,
+    read_only image3d_t densities_im,
+    read_only image3d_t disp_im,
+    write_only global float* results
+)
+{
+    int4 coord = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
+    float4 disp = read_imagef(disp_im, imagesampler, coord);
+
+    if (disp.w > 0.f)
+    {
+        int n = get_image_width(forceA_im);
+        float3 fA = read_imagef(forceA_im, imagesampler, coord).xyz;
+        float3 fB = read_imagef(forceB_im, imagesampler, coord).xyz;
+        float3 dens = read_imagef(densities_im, imagesampler, coord).xyz;
+        float3 vel = read_imagef(vel_im, imagesampler, coord).xyz;
+
+        float3 K = fA - fB;
+        
+        vel *= dens;
+        vel.x = vel.x > TOL ? vel.x : vel.x < -TOL ? vel.x : TOL;
+        vel.y = vel.y > TOL ? vel.y : vel.y < -TOL ? vel.y : TOL;
+        vel.z = vel.z > TOL ? vel.z : vel.z < -TOL ? vel.z : TOL;
+
+        K /= vel;
+
+        int I = 2*(coord.x + n * coord.y + n * n * coord.z);
+        results[I] = disp.x * disp.x * K.x +  disp.y * disp.y * K.y *  disp.z * disp.z * K.z;
+        results[I+1] = disp.x * disp.x +  disp.y * disp.y *  disp.z * disp.z;
+    }
+}
+
+__kernel void set_dampining(
+    read_only global float* input, 
+    write_only global float* result)
+{
+    float nom = input[0];
+    float den = input[1];
+
+    den = den > TOL ? den : den < -TOL ? den : TOL;
+    nom = fabs(nom);
+    float res = 2.0f * sqrt(nom / den);
+
+    result[0] = res < 1.0f ? res : 1.0f;
 }
 
 __kernel void update_displacement(
@@ -72,7 +117,7 @@ __kernel void update_displacement(
     write_only image3d_t vel_im,
     read_only image3d_t force_im,
     read_only image3d_t densities_im,
-    const float c
+    read_only global float* c
 )
 {
     int4 coord = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
@@ -85,7 +130,7 @@ __kernel void update_displacement(
         float3 vel_old = read_imagef(vel_old_im, imagesampler, coord).xyz;
 
         force /= densitiy;
-        force -= c * vel_old;
+        force -= c[0] * vel_old;
 
         float3 newvel = vel_old + force;
         write_imagef(vel_im, coord, (float4)(newvel, 0));
@@ -132,6 +177,43 @@ __kernel void reduce(
         output[get_group_id(0)] = res;
     }
 }
+__kernel void reduce_dampening(
+    read_only global float* input, 
+    write_only global float* output, 
+    local float* intermidiate, 
+    const int n, const int size)
+{
+    int gid = get_global_id(0) * 2 * size;
+
+    int m = gid + size * 2;
+    m = m < n * 2 ? m : n * 2;
+    float resa = 0.f;
+    float resb = 0.f;
+    for ( ; gid < m; gid+=2)
+    {
+        resa += input[gid];
+        resb += input[gid+1];
+    }
+    int lid = get_local_id(0) * 2;
+    intermidiate[lid] = resa;
+    intermidiate[lid+1] = resb;
+
+    barrier(CLK_LOCAL_MEM_FENCE);
+    if (!lid)
+    {
+        resa = 0.f;
+        resb = 0.f;
+        for (int i = 0; i < get_local_size(0) * 2; i += 2)
+        {
+            resa += intermidiate[i];
+            resb += intermidiate[i+1];
+        }
+        int group_id = get_group_id(0) * 2;
+        output[group_id] = resa;
+        output[group_id+1] = resb;
+    }
+}
+
 __kernel void test(write_only image3d_t result)
 {
     int4 i = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
