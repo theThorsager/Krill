@@ -87,17 +87,19 @@ namespace Krill.Grasshopper
                 // ...
             }
 
-            wrapper.AssignBuffers(disp, vel, force, densities, bodyload, stiffness, xi, xi_n, n);
+            //wrapper.AssignBuffers(disp, vel, force, densities, bodyload, stiffness, xi, xi_n, n);
 
-            wrapper.SetKernelArguments(2, 1000.0f);
+            //wrapper.SetKernelArguments(2, 1000.0f);
 
-            wrapper.EnqueueKernel(n);
+            //wrapper.EnqueueKernel(n);
 
-            wrapper.ReadBuffers(disp, n);
+            //wrapper.ReadBuffers(disp, n);
 
-            wrapper.ReleaseBuffers();
+            //wrapper.ReleaseBuffers();
 
-            GetValues(disp, ref dsp);
+            //GetValues(disp, ref dsp);
+
+            dsp[0].X = (float)wrapper.TestKernel();
 
             DA.SetDataList(0, dsp);
         }
