@@ -306,17 +306,25 @@ namespace Krill.Grasshopper
 
                 wrap.SetKernelArguments((int)settings.delta, (float)(settings.bond_stiffness * vol), mask.n);
 
+                double residual_scale = double.MinValue;
                 for (i = 0; i < settings.n_timesteps; i++)
                 {
                     wrap.EnqueueKernel(mask.n);
 
+                    if (CancellationToken.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
                     if (i % 100 == 1)
                     {
-                        ReportProgress(Id, 3.0 + i / 10000.0);
-
                         float residual = wrap.CheckResidual(mask.n, (float)F, n_particles);
                         if (residual < tolerance)
                             break;
+
+                        double temp = Math.Log(residual);
+                        residual_scale = temp > residual_scale ? temp : residual_scale;
+                        ReportProgress(Id, 3.0 + Math.Max(0, (Math.Log(residual) - residual_scale) / (logtol - residual_scale)));
 
                         wrap.ReadDisp(disp, mask.n);
                         RhinoVectorConversion.GetValues(disp, ref model.dispVoxels.cellValues);
@@ -333,73 +341,6 @@ namespace Krill.Grasshopper
                 RhinoVectorConversion.GetValues(disp, ref model.dispVoxels.cellValues);
                 RhinoVectorConversion.GetValues(vel, ref model.velVoxels.cellValues);
                 RhinoVectorConversion.GetValues(force, ref model.forceVoxels.cellValues);
-
-
-                // Load Stepping
-                //ReportProgress(Id, 2);
-                //const int n_load_stepping = 50;
-                //for (; i < n_load_stepping && i < settings.n_timesteps; i++)
-                //{
-                //    // compute the acceleration
-                //    model.UpdateForce(Math.Min((double)(i + 1.0) / n_load_stepping, 1));
-                //    // Verlet integration, to update pos
-                //    double c = model.CalculateDampening();
-                //    model.UpdateDisp(c);
-
-                //    if (CancellationToken.IsCancellationRequested)
-                //    {
-                //        oldstate.LastUpdate(mask, neighOff, model, i);
-                //        return;
-                //    }
-
-                //    double residual = model.ComputeResidual(F);
-                //    if (residual < tolerance)
-                //        break;
-
-                //    if (i % 10 == 0)
-                //    {
-                //        conduit.SetDisplacments(model.dispVoxels);
-                //        conduit.Update();
-                //    }
-                //    ReportProgress(Id, 2.0 + (double)i / n_load_stepping);
-                //}
-
-                //double residual_scale = 1;
-                //// Try to converge
-                //ReportProgress(Id, 3);
-                //for (; i < settings.n_timesteps; i++)
-                //{
-                //    // compute the acceleration
-                //    model.UpdateForce();
-                //    // Verlet integration, to update pos
-                //    double c = model.CalculateDampening();
-                //    model.UpdateDisp(c);
-
-                //    double residual = model.ComputeResidual(F);
-
-                //    if (CancellationToken.IsCancellationRequested)
-                //    {
-                //        oldstate.LastUpdate(mask, neighOff, model, i);
-                //        return;
-                //    }
-
-                //    if (i % 10 == n_load_stepping % 10)
-                //    {
-                //        conduit.SetDisplacments(model.dispVoxels);
-                //        conduit.Update();
-                //        if (i == n_load_stepping)
-                //        {
-                //            residual_scale = Math.Log(residual);
-                //            ReportProgress(Id, 3);
-                //        }
-                //        else
-                //            ReportProgress(Id, 3.0 + Math.Max(0, (Math.Log(residual) - residual_scale) / (logtol - residual_scale)));
-                //    }
-                //    // Check termination criteria
-                //    if (residual < tolerance)
-                //        break;
-                //}
-
 
                 // Display data
                 conduit.SetDisplacments(model.dispVoxels);

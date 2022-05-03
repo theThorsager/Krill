@@ -426,9 +426,7 @@ namespace GPUCompute
             //ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)lsize };
 
             int err = api.EnqueueNdrangeKernel(queue, even ? kernel_forcesA : kernel_forcesB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
-            api.Finish(queue);
             UpdateDampening(n);
-            api.Finish(queue);
             err = api.EnqueueNdrangeKernel(queue, even ? kernel_dispA : kernel_dispB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
             api.Finish(queue);
             even = !even;
@@ -442,7 +440,6 @@ namespace GPUCompute
             ReadOnlySpan<nuint> offset = new nuint[] { 0, 0, 0 };
             // compute dampening
             int err = api.EnqueueNdrangeKernel(queue, even ? kernel_c_dampA : kernel_c_dampB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
-            api.Finish(queue);
 
             // reduce loop
             bool outputA = true;
@@ -458,13 +455,11 @@ namespace GPUCompute
                 g_size = n_output * l_size;
 
                 err = api.EnqueueNdrangeKernel(queue, outputA ? kernel_reduce_dampA : kernel_reduce_dampB, 1, 0, (nuint)g_size, (nuint)l_size, 0, (nint*)null, (nint*)null);
-                api.Finish(queue);
                 outputA = !outputA;
             }
 
             // set_dampening
             err = api.EnqueueNdrangeKernel(queue, outputA ? kernel_set_dampA : kernel_set_dampB, 1, 0, 1, 1, 0, (nint*)null, (nint*)null);
-            api.Finish(queue);
         }
 
         public float CheckResidual(int n, float F, int n_particles)
