@@ -27,6 +27,9 @@ namespace GPUCompute
         nint kernel_dispA;
         nint kernel_dispB;
 
+        nint kernel_residuals;
+        nint kernel_reduce_resid;
+
         nint kernel_test;
 
         // Buffers
@@ -36,7 +39,8 @@ namespace GPUCompute
         nint bodyload;
         nint stiffness;
 
-        nint force;
+        nint forceA;
+        nint forceB;
 
         nint xi;
 
@@ -44,6 +48,11 @@ namespace GPUCompute
         nint velocityB;
         
         nint densities;
+
+        nint buffer_residual_inner;
+        nint buffer_residual;
+
+        nint buffer_dampening;
 
         // 
         bool even = true;
@@ -157,6 +166,18 @@ namespace GPUCompute
             if (err < 0)
                 return $"Could not create kernel: {kernel_name}";
 
+            kernel_name = "compute_residual";
+            kernel_residuals = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
+            kernel_name = "reduce";
+            kernel_reduce_resid = api.CreateKernel(program, kernel_name, out err);
+            if (err < 0)
+                return $"Could not create kernel: {kernel_name}";
+
+
+
+
             kernel_name = "test";
             kernel_test = api.CreateKernel(program, kernel_name, out err);
             if (err < 0)
@@ -174,8 +195,8 @@ namespace GPUCompute
 
             even = true;
 
+            // Images
             ReadOnlySpan<uint> image_format = new uint[] { (uint)CLEnum.Rgba, (uint)CLEnum.Float };
-
             {
                 GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
                 void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
@@ -186,7 +207,8 @@ namespace GPUCompute
             {
                 GCHandle forceH = GCHandle.Alloc(force, GCHandleType.Pinned);
                 void* forcePtr = forceH.AddrOfPinnedObject().ToPointer();
-                this.force = api.CreateImage3D(context, CLEnum.MemReadWrite | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, forcePtr, &err);
+                this.forceA = api.CreateImage3D(context, CLEnum.MemReadWrite | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, forcePtr, &err);
+                this.forceB = api.CreateImage3D(context, CLEnum.MemReadWrite | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, forcePtr, &err);
                 forceH.Free();
             }
             {
@@ -220,58 +242,68 @@ namespace GPUCompute
                 this.stiffness = api.CreateImage3D(context, CLEnum.MemReadOnly | CLEnum.MemCopyHostPtr, image_format, n, n, n, 0, 0, stiffPtr, &err);
                 stiffH.Free();
             }
+
+            // Buffers
+            // Residuals
+            buffer_residual_inner = api.CreateBuffer(context, CLEnum.MemReadWrite, n * n * n * sizeof(float), null, &err);
+            int size = (int)Math.Ceiling(n * n * n / (double)(256 * 256));
+            buffer_residual = api.CreateBuffer(context, CLEnum.MemWriteOnly, (nuint)(size * sizeof(float)), null, &err);
+
+            // Dampening
         }
 
-        public void AssignBuffers2d(float[] disp, float[] vel, float[] force,
-            float[] stiffness,
-            float[] xi, int xi_n, int n_i)
-        {
-            nuint n = (nuint)n_i;
-            int err;
+        //public void AssignBuffers2d(float[] disp, float[] vel, float[] force,
+        //    float[] stiffness,
+        //    float[] xi, int xi_n, int n_i)
+        //{
+        //    nuint n = (nuint)n_i;
+        //    int err;
 
-            ReadOnlySpan<uint> image_format = new uint[] { (uint)CLEnum.Rgba, (uint)CLEnum.Float };
+        //    ReadOnlySpan<uint> image_format = new uint[] { (uint)CLEnum.Rgba, (uint)CLEnum.Float };
 
-            {
-                GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
-                void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
-                dispA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, dispPtr, &err);
-                dispB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, dispPtr, &err);
-                dispH.Free();
-            }
-            {
-                GCHandle forceH = GCHandle.Alloc(force, GCHandleType.Pinned);
-                void* forcePtr = forceH.AddrOfPinnedObject().ToPointer();
-                this.force = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, forcePtr, &err);
-                forceH.Free();
-            }
-            {
-                GCHandle xiH = GCHandle.Alloc(xi, GCHandleType.Pinned);
-                void* xiPtr = xiH.AddrOfPinnedObject().ToPointer();
-                this.xi = api.CreateImage2D(context, CLEnum.MemReadOnly, image_format, (nuint)xi_n, (nuint)xi_n, 0, xiPtr, &err);
-                xiH.Free();
-            }
-            {
-                GCHandle velH = GCHandle.Alloc(vel, GCHandleType.Pinned);
-                void* velPtr = velH.AddrOfPinnedObject().ToPointer();
-                this.velocityA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, velPtr, &err);
-                this.velocityB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, velPtr, &err);
-                velH.Free();
-            }
-            {
-                GCHandle stiffH = GCHandle.Alloc(stiffness, GCHandleType.Pinned);
-                void* stiffPtr = stiffH.AddrOfPinnedObject().ToPointer();
-                this.stiffness = api.CreateImage2D(context, CLEnum.MemReadOnly, image_format, n, n, 0, stiffPtr, &err);
-                stiffH.Free();
-            }
-        }
+        //    {
+        //        GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
+        //        void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
+        //        dispA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, dispPtr, &err);
+        //        dispB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, dispPtr, &err);
+        //        dispH.Free();
+        //    }
+        //    {
+        //        GCHandle forceH = GCHandle.Alloc(force, GCHandleType.Pinned);
+        //        void* forcePtr = forceH.AddrOfPinnedObject().ToPointer();
+        //        this.forceA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, forcePtr, &err);
+        //        this.forceB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, forcePtr, &err);
+        //        forceH.Free();
+        //    }
+        //    {
+        //        GCHandle xiH = GCHandle.Alloc(xi, GCHandleType.Pinned);
+        //        void* xiPtr = xiH.AddrOfPinnedObject().ToPointer();
+        //        this.xi = api.CreateImage2D(context, CLEnum.MemReadOnly, image_format, (nuint)xi_n, (nuint)xi_n, 0, xiPtr, &err);
+        //        xiH.Free();
+        //    }
+        //    {
+        //        GCHandle velH = GCHandle.Alloc(vel, GCHandleType.Pinned);
+        //        void* velPtr = velH.AddrOfPinnedObject().ToPointer();
+        //        this.velocityA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, velPtr, &err);
+        //        this.velocityB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, velPtr, &err);
+        //        velH.Free();
+        //    }
+        //    {
+        //        GCHandle stiffH = GCHandle.Alloc(stiffness, GCHandleType.Pinned);
+        //        void* stiffPtr = stiffH.AddrOfPinnedObject().ToPointer();
+        //        this.stiffness = api.CreateImage2D(context, CLEnum.MemReadOnly, image_format, n, n, 0, stiffPtr, &err);
+        //        stiffH.Free();
+        //    }
+        //}
 
-        public void SetKernelArguments(int nbonds, float bond_constant)
+        public void SetKernelArguments(int nbonds, float bond_constant, int n)
         {
             int nb = nbonds;
+            // Update Force
             api.SetKernelArg(kernel_forcesA, 0, (nuint)sizeof(nint), dispA);
             api.SetKernelArg(kernel_forcesA, 1, (nuint)sizeof(nint), bodyload);
             api.SetKernelArg(kernel_forcesA, 2, (nuint)sizeof(nint), stiffness);
-            api.SetKernelArg(kernel_forcesA, 3, (nuint)sizeof(nint), force);
+            api.SetKernelArg(kernel_forcesA, 3, (nuint)sizeof(nint), forceA);
             api.SetKernelArg(kernel_forcesA, 4, (nuint)sizeof(nint), xi);
             api.SetKernelArg(kernel_forcesA, 5, (nuint)sizeof(int), &nb);
             api.SetKernelArg(kernel_forcesA, 6, (nuint)sizeof(float), bond_constant);
@@ -280,16 +312,17 @@ namespace GPUCompute
             api.SetKernelArg(kernel_forcesB, 0, (nuint)sizeof(nint), dispB);
             api.SetKernelArg(kernel_forcesB, 1, (nuint)sizeof(nint), bodyload);
             api.SetKernelArg(kernel_forcesB, 2, (nuint)sizeof(nint), stiffness);
-            api.SetKernelArg(kernel_forcesB, 3, (nuint)sizeof(nint), force);
+            api.SetKernelArg(kernel_forcesB, 3, (nuint)sizeof(nint), forceB);
             api.SetKernelArg(kernel_forcesB, 4, (nuint)sizeof(nint), xi);
             api.SetKernelArg(kernel_forcesB, 5, (nuint)sizeof(int), &nb);
             api.SetKernelArg(kernel_forcesB, 6, (nuint)sizeof(float), bond_constant);
 
+            // Update Displacement
             api.SetKernelArg(kernel_dispA, 0, (nuint)sizeof(nint), dispA);
             api.SetKernelArg(kernel_dispA, 1, (nuint)sizeof(nint), dispB);
             api.SetKernelArg(kernel_dispA, 2, (nuint)sizeof(nint), velocityA);
             api.SetKernelArg(kernel_dispA, 3, (nuint)sizeof(nint), velocityB);
-            api.SetKernelArg(kernel_dispA, 4, (nuint)sizeof(nint), force);
+            api.SetKernelArg(kernel_dispA, 4, (nuint)sizeof(nint), forceA);
             api.SetKernelArg(kernel_dispA, 5, (nuint)sizeof(nint), densities);
             api.SetKernelArg(kernel_dispA, 6, (nuint)sizeof(float), 0.1f);
 
@@ -297,9 +330,23 @@ namespace GPUCompute
             api.SetKernelArg(kernel_dispB, 1, (nuint)sizeof(nint), dispA);
             api.SetKernelArg(kernel_dispB, 2, (nuint)sizeof(nint), velocityB);
             api.SetKernelArg(kernel_dispB, 3, (nuint)sizeof(nint), velocityA);
-            api.SetKernelArg(kernel_dispB, 4, (nuint)sizeof(nint), force);
+            api.SetKernelArg(kernel_dispB, 4, (nuint)sizeof(nint), forceB);
             api.SetKernelArg(kernel_dispB, 5, (nuint)sizeof(nint), densities);
             api.SetKernelArg(kernel_dispB, 6, (nuint)sizeof(float), 0.1f);
+
+            // Compute Residual
+            api.SetKernelArg(kernel_residuals, 0, (nuint)sizeof(nint), forceA);
+            api.SetKernelArg(kernel_residuals, 1, (nuint)sizeof(nint), buffer_residual_inner);
+
+            api.SetKernelArg(kernel_reduce_resid, 0, (nuint)sizeof(nint), buffer_residual_inner);
+            api.SetKernelArg(kernel_reduce_resid, 1, (nuint)sizeof(nint), buffer_residual);
+            api.SetKernelArg(kernel_reduce_resid, 2, (nuint)(256*sizeof(float)), null);
+            int size = 256;
+            int num = n * n * n;
+            api.SetKernelArg(kernel_reduce_resid, 3, (nuint)sizeof(int), &num);
+            api.SetKernelArg(kernel_reduce_resid, 4, (nuint)sizeof(int), &size);
+
+            // Compute Dampening
         }
 
         public void EnqueueKernel(int n)
@@ -314,25 +361,79 @@ namespace GPUCompute
             //ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)lsize };
 
             int err = api.EnqueueNdrangeKernel(queue, even ? kernel_forcesA : kernel_forcesB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
-            // Find dampening ...
+            UpdateDampening();
             err = api.EnqueueNdrangeKernel(queue, even ? kernel_dispA : kernel_dispB, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
             even = !even;
         }
 
-        public void CheckResidual(float tol)
+        void UpdateDampening()
         {
-            //...
+            // compute dampening
+
+            // reduce loop
+
+            // set_dampening
         }
 
-        public void ReadBuffers(float[] disp, int n)
+        public float CheckResidual(int n, float F, int n_particles)
+        {
+            // compute_residual
+            int lsize = 8;
+            ReadOnlySpan<nuint> global_size = new nuint[] { (nuint)n, (nuint)n, (nuint)n };
+            ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)lsize, (nuint)4, (nuint)lsize };
+            int linear_lsize = lsize * lsize * 4;
+
+            ReadOnlySpan<nuint> offset = new nuint[] { 0, 0, 0 };
+
+            int err = api.EnqueueNdrangeKernel(queue, kernel_residuals, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
+            // reduce
+            err = api.EnqueueNdrangeKernel(queue, kernel_reduce_resid, 1, 0, (nuint)(n*n*n), (nuint)linear_lsize, 0, (nint*)null, (nint*)null);
+
+            // read_buffer
+            int size = (int)Math.Ceiling(n * n * n / (double)(256 * 256));
+            var results = new float[size];
+            GCHandle handle = GCHandle.Alloc(results, GCHandleType.Pinned);
+            void* ptr = handle.AddrOfPinnedObject().ToPointer();
+            api.EnqueueReadBuffer(queue, buffer_residual, true, 0, (nuint)(size * sizeof(float)), ptr, 0, (nint*)null, (nint*)null);
+            handle.Free();
+
+            return results.Sum() / (F * n_particles);
+        }
+
+        public void ReadBuffers(float[] disp, float[] vel, float[] force, int n)
         {
             ReadOnlySpan<nuint> origin = new nuint[] { 0, 0, 0 };
             ReadOnlySpan<nuint> region = new nuint[] { (nuint)n, (nuint)n, (nuint)n };
+            {
+                GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
+                void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
+                api.EnqueueReadImage(queue, even ? dispA : dispB, true, origin, region, 0, 0, dispPtr, 0, (nint*)null, (nint*)null);
+                dispH.Free();
+            }
+            {
+                GCHandle dispH = GCHandle.Alloc(vel, GCHandleType.Pinned);
+                void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
+                api.EnqueueReadImage(queue, even ? velocityA : velocityB, true, origin, region, 0, 0, dispPtr, 0, (nint*)null, (nint*)null);
+                dispH.Free();
+            }
+            {
+                GCHandle dispH = GCHandle.Alloc(force, GCHandleType.Pinned);
+                void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
+                api.EnqueueReadImage(queue, even ? this.forceA : this.forceB, true, origin, region, 0, 0, dispPtr, 0, (nint*)null, (nint*)null);
+                dispH.Free();
+            }
+        }
 
-            GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
-            void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
-            api.EnqueueReadImage(queue, even ? dispA : dispB, true, origin, region, 0, 0, dispPtr, 0, (nint*)null, (nint*)null);
-            dispH.Free();
+        public void ReadDisp(float[] disp, int n)
+        {
+            ReadOnlySpan<nuint> origin = new nuint[] { 0, 0, 0 };
+            ReadOnlySpan<nuint> region = new nuint[] { (nuint)n, (nuint)n, (nuint)n };
+            {
+                GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
+                void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
+                api.EnqueueReadImage(queue, even ? dispA : dispB, true, origin, region, 0, 0, dispPtr, 0, (nint*)null, (nint*)null);
+                dispH.Free();
+            }
         }
 
         public void ReleaseBuffers()
@@ -341,7 +442,8 @@ namespace GPUCompute
             api.ReleaseMemObject(dispA);
             api.ReleaseMemObject(dispB);
 
-            api.ReleaseMemObject(force);
+            api.ReleaseMemObject(forceA);
+            api.ReleaseMemObject(forceB);
 
             api.ReleaseMemObject(xi);
             api.ReleaseMemObject(velocityA);

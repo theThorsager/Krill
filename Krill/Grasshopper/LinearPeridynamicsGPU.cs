@@ -285,39 +285,55 @@ namespace Krill.Grasshopper
                 conduit.Update();
 
                 model.SetDensities(settings.delta * settings.Delta, 10);
+                double F = model.ComputeF(BCs, settings.E);
+                int n_particles = mask.cellValues.Count(x => x > 0);
 
                 SilkWrapper wrap = RealParent.wrapper;
                 double vol = settings.Delta * settings.Delta * settings.Delta;
 
                 var disp = RhinoVectorConversion.SetValues(model.dispVoxels.cellValues, mask.cellValues, neighOff.Length * 4 + 2);
+                var vel = RhinoVectorConversion.SetValues(model.velVoxels.cellValues);
+                var force = RhinoVectorConversion.SetValues(model.forceVoxels.cellValues);
 
                 int xi_n = (int)Math.Floor(settings.delta) * 2 + 1;
                 wrap.AssignBuffers(
-                disp,
-                RhinoVectorConversion.SetValues(model.velVoxels.cellValues),
-                RhinoVectorConversion.SetValues(model.forceVoxels.cellValues),
+                disp, vel, force,
                 RhinoVectorConversion.SetValues(model.densities.cellValues),
                 RhinoVectorConversion.SetValues(model.bodyload.cellValues.Select(x => x / vol).ToArray()),
                 RhinoVectorConversion.SetValues(model.spring.cellValues),
                 Utility.GetNeighbourXiGPU(settings.delta, settings.Delta),
                 xi_n, mask.n);
 
-                wrap.SetKernelArguments((int)settings.delta, (float)(settings.bond_stiffness * vol));
+                wrap.SetKernelArguments((int)settings.delta, (float)(settings.bond_stiffness * vol), mask.n);
 
-                for (i = 0; i < 10000; i++)
+                for (i = 0; i < settings.n_timesteps; i++)
                 {
                     wrap.EnqueueKernel(mask.n);
+
+                    if (i % 100 == 1)
+                    {
+                        ReportProgress(Id, 3.0 + i / 10000.0);
+
+                        float residual = wrap.CheckResidual(mask.n, (float)F, n_particles);
+                        if (residual < tolerance)
+                            break;
+
+                        wrap.ReadDisp(disp, mask.n);
+                        RhinoVectorConversion.GetValues(disp, ref model.dispVoxels.cellValues);
+                        conduit.SetDisplacments(model.dispVoxels);
+                        conduit.Update();
+                    }
                 }
 
-                var test = new float[disp.Length];
 
-                wrap.ReadBuffers(test, mask.n);
+                wrap.ReadBuffers(disp, vel, force, mask.n);
 
                 wrap.ReleaseBuffers();
 
-                RhinoVectorConversion.GetValues(test, ref model.dispVoxels.cellValues);
+                RhinoVectorConversion.GetValues(disp, ref model.dispVoxels.cellValues);
+                RhinoVectorConversion.GetValues(vel, ref model.velVoxels.cellValues);
+                RhinoVectorConversion.GetValues(force, ref model.forceVoxels.cellValues);
 
-                //double F = model.ComputeF(BCs, settings.E);
 
                 // Load Stepping
                 //ReportProgress(Id, 2);
