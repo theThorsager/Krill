@@ -95,6 +95,12 @@ namespace Krill.Grasshopper
                 case 4:
                     Message = "Relaxing: " + min.ToString("0.00%");
                     break;
+                case 10:
+                    Message = "Writing Buffers";
+                    break;
+                case 11:
+                    Message = "Reading Buffers";
+                    break;
                 default:
                     break;
             }
@@ -179,6 +185,7 @@ namespace Krill.Grasshopper
 
         internal BBperiState oldState = null;
         public object balanceLock = new object();
+        public object wrapperLock = new object();
     }
 
     class LinearPeridynamicsGPUWorker : WorkerInstance
@@ -291,52 +298,57 @@ namespace Krill.Grasshopper
                 SilkWrapper wrap = RealParent.wrapper;
                 double vol = settings.Delta * settings.Delta * settings.Delta;
 
+                ReportProgress(Id, 10.0);
                 var disp = RhinoVectorConversion.SetValues(model.dispVoxels.cellValues, mask.cellValues, neighOff.Length * 4 + 2);
                 var vel = RhinoVectorConversion.SetValues(model.velVoxels.cellValues);
                 var force = RhinoVectorConversion.SetValues(model.forceVoxels.cellValues);
 
                 int xi_n = (int)Math.Floor(settings.delta) * 2 + 1;
-                wrap.AssignBuffers(
-                disp, vel, force,
-                RhinoVectorConversion.SetValues(model.densities.cellValues),
-                RhinoVectorConversion.SetValues(model.bodyload.cellValues.Select(x => x / vol).ToArray()),
-                RhinoVectorConversion.SetValues(model.spring.cellValues),
-                Utility.GetNeighbourXiGPU(settings.delta, settings.Delta),
-                xi_n, mask.n);
-
-                wrap.SetKernelArguments((int)settings.delta, (float)(settings.bond_stiffness * vol), mask.n);
-
-                double residual_scale = double.MinValue;
-                for (i = 0; i < settings.n_timesteps; i++)
+                lock (RealParent.wrapperLock)
                 {
-                    wrap.EnqueueKernel(mask.n);
+                    wrap.AssignBuffers(
+                    disp, vel, force,
+                    RhinoVectorConversion.SetValues(model.densities.cellValues),
+                    RhinoVectorConversion.SetValues(model.bodyload.cellValues.Select(x => x / vol).ToArray()),
+                    RhinoVectorConversion.SetValues(model.spring.cellValues),
+                    Utility.GetNeighbourXiGPU(settings.delta, settings.Delta),
+                    xi_n, mask.n);
 
-                    if (CancellationToken.IsCancellationRequested)
-                    {
-                        break;
-                    }
+                    wrap.SetKernelArguments((int)settings.delta, (float)(settings.bond_stiffness * vol), mask.n);
 
-                    if (i % 100 == 1)
+                    ReportProgress(Id, 3.0);
+                    double residual_scale = double.MinValue;
+                    for (i = 0; i < settings.n_timesteps; i++)
                     {
-                        float residual = wrap.CheckResidual(mask.n, (float)F, n_particles);
-                        if (residual < tolerance)
+                        wrap.EnqueueKernel(mask.n);
+
+                        if (CancellationToken.IsCancellationRequested)
+                        {
                             break;
+                        }
 
-                        double temp = Math.Log(residual);
-                        residual_scale = temp > residual_scale ? temp : residual_scale;
-                        ReportProgress(Id, 3.0 + Math.Max(0, (Math.Log(residual) - residual_scale) / (logtol - residual_scale)));
+                        if (i % 100 == 1)
+                        {
+                            float residual = wrap.CheckResidual(mask.n, (float)F, n_particles);
+                            if (residual < tolerance)
+                                break;
 
-                        wrap.ReadDisp(disp, mask.n);
-                        RhinoVectorConversion.GetValues(disp, ref model.dispVoxels.cellValues);
-                        conduit.SetDisplacments(model.dispVoxels);
-                        conduit.Update();
+                            double temp = Math.Log(residual);
+                            residual_scale = temp > residual_scale ? temp : residual_scale;
+                            ReportProgress(Id, 3.0 + Math.Max(0, (Math.Log(residual) - residual_scale) / (logtol - residual_scale)));
+
+                            wrap.ReadDisp(disp, mask.n);
+                            RhinoVectorConversion.GetValues(disp, ref model.dispVoxels.cellValues);
+                            conduit.SetDisplacments(model.dispVoxels);
+                            conduit.Update();
+                        }
                     }
+
+                    ReportProgress(Id, 11.0);
+                    wrap.ReadBuffers(disp, vel, force, mask.n);
+
+                    wrap.ReleaseBuffers();
                 }
-
-
-                wrap.ReadBuffers(disp, vel, force, mask.n);
-
-                wrap.ReleaseBuffers();
 
                 RhinoVectorConversion.GetValues(disp, ref model.dispVoxels.cellValues);
                 RhinoVectorConversion.GetValues(vel, ref model.velVoxels.cellValues);

@@ -35,8 +35,8 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddTextParameter("devices", "devices", "", GH_ParamAccess.list);
-            pManager.AddTextParameter("errors", "errors", "", GH_ParamAccess.list);
+            pManager.AddTextParameter("devices", "devices", "Avalible devices", GH_ParamAccess.list);
+            pManager.AddTextParameter("errors", "errors", "OpenCL errors found.", GH_ParamAccess.list);
         }
 
         /// <summary>
