@@ -66,6 +66,8 @@ namespace GPUCompute
         // 
         bool even = true;
 
+        public List<string> errorList = new List<string>();
+
         public string Init()
         {
             api = CL.GetApi();
@@ -73,58 +75,53 @@ namespace GPUCompute
 
             // Platform
             err = api.GetPlatformIDs(0, null, out uint num_platforms);
+            if (err < 0)
+                return "No Platform";
+
+            int device_index = 0;
+            string pathD = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grasshopper/Libraries/Device_Index.txt");
+            if (System.IO.File.Exists(pathD))
+            {
+                string number = System.IO.File.ReadAllText(pathD);
+                device_index = int.Parse(number);
+            }
+
+            device = 0;
+            int device_counter = 0;
             Span<nint> platfroms = new nint[num_platforms];
             err = api.GetPlatformIDs(num_platforms, platfroms, (uint*)null);
             for (int i = 0; i < num_platforms; i++)
             {
-                api.GetPlatformInfo(platfroms[i], (uint)CLEnum.PlatformName, 0, null, out nuint plat_size);
-                var programlog = new byte[plat_size]; // note that C# char is 2 bytes vs 1 byte as assumed in OpenCL;
-                GCHandle handle = GCHandle.Alloc(programlog, GCHandleType.Pinned);
-                void* ptr = handle.AddrOfPinnedObject().ToPointer();
+                // Device
+                uint num_devices = 0;
+                err = api.GetDeviceIDs(platfroms[i], CLEnum.DeviceTypeAll, 0, null, &num_devices);
+                Span<nint> devices = new nint[num_devices];
+                err = api.GetDeviceIDs(platfroms[i], CLEnum.DeviceTypeAll, num_devices, devices, (uint*)null);
 
-                api.GetPlatformInfo(platfroms[i], (uint)CLEnum.PlatformName, plat_size, ptr, null);
-                handle.Free();
+                for (int j = 0; j < num_devices; j++)
+                {
+                    if (ValidDevice(devices[j]))
+                    {
+                        platform = platfroms[i];
+                        device = devices[j];
+                        if (device_index == device_counter)
+                        {
+                            goto endLoop;
+                        }
 
-                string res = new string(programlog.Select(x => (char)x).ToArray());
+                        device_counter++;
+                    }
+                }
             }
-            platform = platfroms[1];
-            if (err < 0)
-                return "No Platform";
-
-            // Device
-            uint num_devices = 0;
-            err = api.GetDeviceIDs(platform, CLEnum.DeviceTypeAll, 0, null, &num_devices);
-            Span<nint> devices = new nint[num_devices];
-            err = api.GetDeviceIDs(platform, CLEnum.DeviceTypeAll, num_devices, devices, (uint*)null);
-
-            for (int i = 0; i < num_devices; i++)
-            {
-                api.GetDeviceInfo(devices[i], (uint)CLEnum.DeviceName, 0, null, out nuint res_size);
-                var programlog = new byte[res_size]; // note that C# char is 2 bytes vs 1 byte as assumed in OpenCL;
-                GCHandle handle = GCHandle.Alloc(programlog, GCHandleType.Pinned);
-                void* ptr = handle.AddrOfPinnedObject().ToPointer();
-
-                api.GetDeviceInfo(devices[i], (uint)CLEnum.DeviceName, res_size, ptr, null);
-                handle.Free();
-
-                string res = new string(programlog.Select(x => (char)x).ToArray());
-            }
-
-            device = devices[0];
-
-
-            if (err == (nint)CLEnum.DeviceNotFound)
-            {
-                err = api.GetDeviceIDs(platform, CLEnum.DeviceTypeCpu, 1, out device, null);
-            }
-            if (err < 0)
+            if (device == 0)
                 return "No device could be found";
+
+            endLoop:
 
             // Context
             context = api.CreateContext(null, 1, in device, null, null, out err);
             if (err < 0)
                 return "No Context";
-
 
             {
                 // Read source from file
@@ -150,7 +147,7 @@ namespace GPUCompute
                     api.GetProgramBuildInfo(program, device, (uint)CLEnum.ProgramBuildLog, logsize, ptr, null);
                     handle.Free();
 
-                    return "Build Error:" + new string(programlog.Select(x => (char)x).ToArray());
+                    return "Build Error: \n" + new string(programlog.Select(x => (char)x).ToArray());
                 }
             }
 
@@ -287,50 +284,6 @@ namespace GPUCompute
             buffer_dampeningB = api.CreateBuffer(context, CLEnum.MemReadWrite, (nuint)(2 * size * sizeof(float)), null, &err);
             buffer_dampeningC = api.CreateBuffer(context, CLEnum.MemReadWrite, sizeof(float), null, &err);
         }
-
-        //public void AssignBuffers2d(float[] disp, float[] vel, float[] force,
-        //    float[] stiffness,
-        //    float[] xi, int xi_n, int n_i)
-        //{
-        //    nuint n = (nuint)n_i;
-        //    int err;
-
-        //    ReadOnlySpan<uint> image_format = new uint[] { (uint)CLEnum.Rgba, (uint)CLEnum.Float };
-
-        //    {
-        //        GCHandle dispH = GCHandle.Alloc(disp, GCHandleType.Pinned);
-        //        void* dispPtr = dispH.AddrOfPinnedObject().ToPointer();
-        //        dispA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, dispPtr, &err);
-        //        dispB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, dispPtr, &err);
-        //        dispH.Free();
-        //    }
-        //    {
-        //        GCHandle forceH = GCHandle.Alloc(force, GCHandleType.Pinned);
-        //        void* forcePtr = forceH.AddrOfPinnedObject().ToPointer();
-        //        this.forceA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, forcePtr, &err);
-        //        this.forceB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, forcePtr, &err);
-        //        forceH.Free();
-        //    }
-        //    {
-        //        GCHandle xiH = GCHandle.Alloc(xi, GCHandleType.Pinned);
-        //        void* xiPtr = xiH.AddrOfPinnedObject().ToPointer();
-        //        this.xi = api.CreateImage2D(context, CLEnum.MemReadOnly, image_format, (nuint)xi_n, (nuint)xi_n, 0, xiPtr, &err);
-        //        xiH.Free();
-        //    }
-        //    {
-        //        GCHandle velH = GCHandle.Alloc(vel, GCHandleType.Pinned);
-        //        void* velPtr = velH.AddrOfPinnedObject().ToPointer();
-        //        this.velocityA = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, velPtr, &err);
-        //        this.velocityB = api.CreateImage2D(context, CLEnum.MemReadWrite, image_format, n, n, 0, velPtr, &err);
-        //        velH.Free();
-        //    }
-        //    {
-        //        GCHandle stiffH = GCHandle.Alloc(stiffness, GCHandleType.Pinned);
-        //        void* stiffPtr = stiffH.AddrOfPinnedObject().ToPointer();
-        //        this.stiffness = api.CreateImage2D(context, CLEnum.MemReadOnly, image_format, n, n, 0, stiffPtr, &err);
-        //        stiffH.Free();
-        //    }
-        //}
 
         public void SetKernelArguments(int nbonds, float bond_constant, int n)
         {
@@ -608,5 +561,109 @@ namespace GPUCompute
             return values.Sum();
         }
 
+        public List<string> QueryDevices()
+        {
+            var results = new List<string>();
+
+            int err;
+            // Platform
+            err = api.GetPlatformIDs(0, null, out uint num_platforms);
+            if (CheckError(err))
+                return results;
+
+            Span<nint> platfroms = new nint[num_platforms];
+            err = api.GetPlatformIDs(num_platforms, platfroms, (uint*)null);
+            for (int i = 0; i < num_platforms; i++)
+            {
+                api.GetPlatformInfo(platfroms[i], (uint)CLEnum.PlatformName, 0, null, out nuint res_size);
+                var platform_info = new byte[res_size]; // note that C# char is 2 bytes vs 1 byte as assumed in OpenCL;
+                GCHandle phandle = GCHandle.Alloc(platform_info, GCHandleType.Pinned);
+                void* ptr = phandle.AddrOfPinnedObject().ToPointer();
+
+                api.GetPlatformInfo(platfroms[i], (uint)CLEnum.PlatformName, res_size, ptr, null);
+                phandle.Free();
+
+                string pres = new string(platform_info.Select(x => (char)x).ToArray());
+                // Device
+                uint num_devices = 0;
+                err = api.GetDeviceIDs(platfroms[i], CLEnum.DeviceTypeAll, 0, null, &num_devices);
+                if (CheckError(err))
+                    continue;
+
+                Span<nint> devices = new nint[num_devices];
+                err = api.GetDeviceIDs(platfroms[i], CLEnum.DeviceTypeAll, num_devices, devices, (uint*)null);
+
+                for (int j = 0; j < num_devices; j++)
+                {
+                    if (ValidDevice(devices[j]))
+                    {
+                        api.GetDeviceInfo(devices[j], (uint)CLEnum.DeviceName, 0, null, out res_size);
+                        var device_info = new byte[res_size]; // note that C# char is 2 bytes vs 1 byte as assumed in OpenCL;
+                        GCHandle dhandle = GCHandle.Alloc(device_info, GCHandleType.Pinned);
+                        ptr = dhandle.AddrOfPinnedObject().ToPointer();
+
+                        api.GetDeviceInfo(devices[j], (uint)CLEnum.DeviceName, res_size, ptr, null);
+                        dhandle.Free();
+
+                        string dres = new string(device_info.Select(x => (char)x).ToArray());
+                        results.Add(pres + ": " + dres);
+                    }
+                }
+            }
+
+            return results;
+        }
+
+        bool CheckError(int err)
+        {
+            if (err >= 0)
+                return false;
+
+            errorList.Add(EnumCodes.Query(err));
+            return true;
+        }
+
+        bool ValidDevice(nint device)
+        {
+            nuint res_size;
+            GCHandle handle;
+            // Write Image 3d
+            // CL_DEVICE_EXTENSIONS
+            api.GetDeviceInfo(device, (uint)CLEnum.DeviceExtensions, 0, null, &res_size);
+            var char_arr = new byte[res_size]; // note that C# char is 2 bytes vs 1 byte as assumed in OpenCL;
+            handle = GCHandle.Alloc(char_arr, GCHandleType.Pinned);
+            var ptr = handle.AddrOfPinnedObject().ToPointer();
+            api.GetDeviceInfo(device, (uint)CLEnum.DeviceExtensions, res_size, ptr, null);
+            handle.Free();
+
+            string extensions = new string(char_arr.Select(x => (char)x).ToArray());
+            bool test = extensions.Split(' ').Contains("cl_khr_3d_image_writes");
+            if (!test)
+                return false;
+
+            // CL_DEVICE_IMAGE_SUPPORT
+            api.GetDeviceInfo(device, (uint)CLEnum.DeviceImageSupport, 0, null, &res_size);
+            Span<byte> result = new byte[res_size];
+            api.GetDeviceInfo(device, (uint)CLEnum.DeviceImageSupport, res_size, result, (nuint*)null);
+            if (result[0] == 0)
+                return false;
+
+            // CL_DRIVER_VERSION
+            api.GetDeviceInfo(device, (uint)CLEnum.DeviceVersion, 0, null, &res_size);
+            char_arr = new byte[res_size]; // note that C# char is 2 bytes vs 1 byte as assumed in OpenCL;
+            handle = GCHandle.Alloc(char_arr, GCHandleType.Pinned);
+            ptr = handle.AddrOfPinnedObject().ToPointer();
+            api.GetDeviceInfo(device, (uint)CLEnum.DeviceVersion, res_size, ptr, null);
+            handle.Free();
+
+            string driver_version = new string(char_arr.Select(x => (char)x).ToArray());
+            var version = driver_version.Split(' ')[1].Split('.');
+            bool valid = (int.Parse(version[0]) >= 1 && int.Parse(version[1]) >= 2) ||
+                         (int.Parse(version[0]) > 1);
+            if (!valid) 
+                return false;
+
+            return true;
+        }
     }
 }
