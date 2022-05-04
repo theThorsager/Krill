@@ -67,7 +67,7 @@ __kernel void compute_dampening(
     read_only image3d_t vel_im,
     read_only image3d_t densities_im,
     read_only image3d_t disp_im,
-    write_only global float* results
+    global float* results
 )
 {
     int4 coord = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
@@ -97,8 +97,8 @@ __kernel void compute_dampening(
 }
 
 __kernel void set_dampining(
-    read_only global float* input, 
-    write_only global float* result)
+    global float* input, 
+    global float* result)
 {
     float nom = input[0];
     float den = input[1];
@@ -117,7 +117,7 @@ __kernel void update_displacement(
     write_only image3d_t vel_im,
     read_only image3d_t force_im,
     read_only image3d_t densities_im,
-    read_only global float* c
+    global float* c
 )
 {
     int4 coord = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
@@ -140,7 +140,7 @@ __kernel void update_displacement(
 
 __kernel void compute_residual(
     read_only image3d_t force_im, 
-    write_only global float* results)
+    global float* results)
 {
     int4 coord = (int4)(get_global_id(0), get_global_id(1), get_global_id(2), 0);
     float3 f = read_imagef(force_im, imagesampler, coord).xyz;
@@ -151,8 +151,8 @@ __kernel void compute_residual(
 }
 
 __kernel void reduce(
-    read_only global float* input, 
-    write_only global float* output, 
+    global float* input, 
+    global float* output, 
     local float* intermidiate, 
     const int n, const int size)
 {
@@ -178,8 +178,8 @@ __kernel void reduce(
     }
 }
 __kernel void reduce_dampening(
-    read_only global float* input, 
-    write_only global float* output, 
+    global float* input, 
+    global float* output, 
     local float* intermidiate, 
     const int n, const int size)
 {
