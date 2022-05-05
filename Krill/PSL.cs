@@ -34,6 +34,8 @@ namespace Krill
 
         public List<PhaseI> pI = new List<PhaseI>();
         public List<PhaseII> pII = new List<PhaseII>();
+        public List<Polyline> pIIcrvs = new List<Polyline>();
+        public List<Polyline> pIIIcrvs = new List<Polyline>();
 
         public List<Point3d> nodes = new List<Point3d>();
 
@@ -98,7 +100,7 @@ namespace Krill
             {
                 List<Tuple<double, int>> tValsAndInd = new List<Tuple<double, int>>();
 
-                double startTol = delta;
+                double startTol = 3 * delta;
 
                 for (int j = 0; j < startPoints.Count; j++)
                 {
@@ -330,7 +332,7 @@ namespace Krill
                                 connectLocalMax = true;
                                 CorrectNode(ref nodes, pt, tol, out bool bol);
 
-                                //phaseIIcrvs.Add(currentPLine);
+                                pIIcrvs.Add(currentPLine);
 
                                 break;
                             }
@@ -350,7 +352,8 @@ namespace Krill
                                 newPII.startPt = currentLocMaxPt;
                                 newPII.endPt = intPtA;
 
-                                newPII.normalAtEnd = Vector3d.CrossProduct(pI[ind].pLineCurve.TangentAt(paramA), l.Direction);
+                                //newPII.normalAtEnd = Vector3d.CrossProduct(pI[ind].pLineCurve.TangentAt(paramA), l.Direction);
+                                newPII.normalAtEnd = new Plane(newPII.endPt, pI[ind].pLineCurve.TangentAt(paramA));
 
                                 CorrectNode(ref nodes, intPtA, tol, out bool bol);
 
@@ -358,7 +361,7 @@ namespace Krill
 
                                 truss.Add(l);
 
-                                //phaseIIcrvs.Add(newPII.pLine);
+                                pIIcrvs.Add(newPII.pLine);
                             }
                         }
 
@@ -375,7 +378,7 @@ namespace Krill
                                 Line l = new Line(currentLocMaxPt, CorrectNode(ref nodes, ptOnMesh, tol, out bool bol));
                                 if (!bol)
                                 {
-                                    //phaseIIcrvs.Add(pI[i].potIIpls[j]);
+                                    pIIcrvs.Add(pI[i].potIIpls[j]);
                                     truss.Add(l);
                                 }
                             }
@@ -388,9 +391,18 @@ namespace Krill
             // The direction that is perpendicular to the tangents of both curves at the intersection
             for (int i = 0; i < pII.Count; i++)
             {
-                Vector3d[] dirs = new Vector3d[2];
-                dirs[0] = pII[i].normalAtEnd;
-                dirs[1] = -dirs[0];
+                Vector3d[] dirs = new Vector3d[4]
+                {
+                    //pII[i].normalAtEnd,
+                    //-pII[i].normalAtEnd
+                    pII[i].normalAtEnd.XAxis,
+                    -pII[i].normalAtEnd.XAxis,
+                    pII[i].normalAtEnd.YAxis,
+                    -pII[i].normalAtEnd.YAxis
+                };
+
+                //dirs[0] = pII[i].normalAtEnd;
+                //dirs[1] = -dirs[0];
 
                 for (int j = 0; j < dirs.Length; j++)
                 {
@@ -398,8 +410,6 @@ namespace Krill
 
                     if (!loadPath.IsValid)
                         continue;
-
-                    //phaseIIcrvs.Add(loadPath);
 
                     List<Curve> crvsA = new List<Curve>();
                     for (int k = 0; k < pI.Count; k++)
@@ -422,14 +432,17 @@ namespace Krill
                         {
                             Line l = new Line(pII[i].endPt, pt);
                             if (l.IsValid)
+                            {
                                 truss.Add(l);
+                                pIIcrvs.Add(loadPath);
+                            }
+                                
                         }
                     }
                 }
             }
 
             ///////////////////////////////////////////////////////////
-            // Här går något fel!!
             // Check if potII curves intersect
             for (int i = 0; i < pI.Count; i++)
             {
@@ -466,7 +479,7 @@ namespace Krill
 
                         Line l = new Line(sPt, ePt);
                         truss.Add(l);
-                        //phaseIIcrvs.Add(pI[i].potIIpls[j]);
+                        pIIcrvs.Add(pI[i].potIIpls[j]);
                     }
                 }
             }
@@ -531,9 +544,7 @@ namespace Krill
                         if (!loadPath.IsValid)
                             continue;
 
-                        //phaseIIcrvs.Add(loadPath);
-
-                        Curve potIII = Curve.CreateInterpolatedCurve(loadPath, 1);
+                    Curve potIII = Curve.CreateInterpolatedCurve(loadPath, 1);
 
                         List<Tuple<double, Point3d>> tValsAndPts = new List<Tuple<double, Point3d>>();
 
@@ -565,13 +576,13 @@ namespace Krill
                             }
                         }
 
-                        if (pts.Count > 1)
+                    if (pts.Count > 1)
+                    {
+                        for (int ii = 0; ii < pts.Count - 1; ii++)
                         {
-                            for (int ii = 0; ii < pts.Count - 1; ii++)
-                            {
-                                Line l = new Line(pts[ii], pts[ii + 1]);
-                                truss.Add(l);
-                            }
+                            Line l = new Line(pts[ii], pts[ii + 1]);
+                            truss.Add(l);
+                            pIIIcrvs.Add(loadPath);
                         }
                     }
                 }
@@ -636,7 +647,7 @@ namespace Krill
             public Point3d endPt;
             public int indPIstart;
             public int indPIend;
-            public Vector3d normalAtEnd;
+            public Plane normalAtEnd;
 
             public PhaseII(Polyline loadPath, int indPhaseIcrv, int indSecondPhaseIcrv)
             {
