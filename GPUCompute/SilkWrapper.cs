@@ -361,8 +361,8 @@ namespace GPUCompute
             api.SetKernelArg(kernel_c_dampA, 4, (nuint)sizeof(nint), dispA);
             api.SetKernelArg(kernel_c_dampA, 5, (nuint)sizeof(nint), buffer_dampeningA);
 
-            api.SetKernelArg(kernel_c_dampB, 0, (nuint)sizeof(nint), forceA);
-            api.SetKernelArg(kernel_c_dampB, 1, (nuint)sizeof(nint), forceB);
+            api.SetKernelArg(kernel_c_dampB, 0, (nuint)sizeof(nint), forceB);
+            api.SetKernelArg(kernel_c_dampB, 1, (nuint)sizeof(nint), forceA);
             api.SetKernelArg(kernel_c_dampB, 2, (nuint)sizeof(nint), velocityB);
             api.SetKernelArg(kernel_c_dampB, 3, (nuint)sizeof(nint), densities);
             api.SetKernelArg(kernel_c_dampB, 4, (nuint)sizeof(nint), dispB);
@@ -439,6 +439,7 @@ namespace GPUCompute
 
             int err = api.EnqueueNdrangeKernel(queue, kernel_residuals, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
             // reduce
+            threads = (int)Math.Ceiling(threads / (double)local_linear) * local_linear;
             err = api.EnqueueNdrangeKernel(queue, kernel_reduce_resid, 1, 0, (nuint)(threads), (nuint)local_linear, 0, (nint*)null, (nint*)null);
 
             // read_buffer

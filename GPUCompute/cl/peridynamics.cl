@@ -1,6 +1,6 @@
 ﻿#pragma OPENCL EXTENSION cl_khr_3d_image_writes : enable
 
-#define TOL 0.000001f
+#define TOL 1e-12f
 
 const sampler_t imagesampler = 
         CLK_FILTER_NEAREST | 
@@ -84,15 +84,15 @@ __kernel void compute_dampening(
         float3 K = fA - fB;
         
         vel *= dens;
-        vel.x = vel.x > TOL ? vel.x : vel.x < -TOL ? vel.x : TOL;
-        vel.y = vel.y > TOL ? vel.y : vel.y < -TOL ? vel.y : TOL;
-        vel.z = vel.z > TOL ? vel.z : vel.z < -TOL ? vel.z : TOL;
+        vel.x = vel.x > TOL ? vel.x : vel.x < -TOL ? vel.x : vel.x < 0 ? -TOL : TOL;
+        vel.y = vel.y > TOL ? vel.y : vel.y < -TOL ? vel.y : vel.y < 0 ? -TOL : TOL;
+        vel.z = vel.z > TOL ? vel.z : vel.z < -TOL ? vel.z : vel.z < 0 ? -TOL : TOL;
 
         K /= vel;
 
         int I = 2*(coord.x + n * coord.y + n * n * coord.z);
-        results[I] = disp.x * disp.x * K.x  +  disp.y * disp.y * K.y  +  disp.z * disp.z * K.z;
-        results[I+1] = disp.x * disp.x +  disp.y * disp.y  +  disp.z * disp.z;
+        results[I] =   disp.x * disp.x * K.x  +  disp.y * disp.y * K.y  +  disp.z * disp.z * K.z;
+        results[I+1] = disp.x * disp.x +         disp.y * disp.y  +        disp.z * disp.z;
     }
 }
 
