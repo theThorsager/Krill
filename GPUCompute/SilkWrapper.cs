@@ -429,8 +429,9 @@ namespace GPUCompute
             err = api.EnqueueNdrangeKernel(queue, kernel_set_damp, 1, 0, 1, 1, 0, (nint*)null, (nint*)null);
         }
 
-        public float CheckResidual(int n, float F, int n_particles)
+        public double CheckResidual(int n, double F, int n_particles)
         {
+            int threads = (n * n * n) / reduction_factor;
             // compute_residual
             ReadOnlySpan<nuint> global_size = new nuint[] { (nuint)n, (nuint)n, (nuint)n };
             ReadOnlySpan<nuint> local_size = new nuint[] { (nuint)local_x, (nuint)local_y, (nuint)local_z };
@@ -438,7 +439,7 @@ namespace GPUCompute
 
             int err = api.EnqueueNdrangeKernel(queue, kernel_residuals, 3, offset, global_size, local_size, 0, (nint*)null, (nint*)null);
             // reduce
-            err = api.EnqueueNdrangeKernel(queue, kernel_reduce_resid, 1, 0, (nuint)(n*n*n), (nuint)local_linear, 0, (nint*)null, (nint*)null);
+            err = api.EnqueueNdrangeKernel(queue, kernel_reduce_resid, 1, 0, (nuint)(threads), (nuint)local_linear, 0, (nint*)null, (nint*)null);
 
             // read_buffer
             int size = (int)Math.Ceiling(n * n * n / (double)(local_linear * reduction_factor));

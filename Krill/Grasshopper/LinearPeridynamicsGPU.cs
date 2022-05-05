@@ -329,7 +329,7 @@ namespace Krill.Grasshopper
 
                         if (i % 100 == 1)
                         {
-                            float residual = wrap.CheckResidual(mask.n, (float)F, n_particles);
+                            double residual = wrap.CheckResidual(mask.n, F, n_particles);
                             if (residual < tolerance)
                                 break;
 
