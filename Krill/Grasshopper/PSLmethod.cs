@@ -59,10 +59,10 @@ namespace Krill.Grasshopper
         /// </summary>
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
-            pManager.AddCurveParameter("curve", "c", "", GH_ParamAccess.list);
             pManager.AddCurveParameter("PhaseICrvs", "Icrvs", "", GH_ParamAccess.list);
             pManager.AddPointParameter("LocalMaxVonMises", "maxPts", "", GH_ParamAccess.list);
             pManager.AddCurveParameter("PhaseIICrvs", "IIcrvs", "", GH_ParamAccess.list);
+            pManager.AddCurveParameter("PhaseIIICrvs", "IIIcrvs", "", GH_ParamAccess.list);
             pManager.AddLineParameter("InitialTruss", "truss", "", GH_ParamAccess.list);
         }
 
@@ -105,10 +105,10 @@ namespace Krill.Grasshopper
         double offsetTol { get; set; }
         double intTol { get; set; }
 
-        List<Polyline> pLine { get; set; } = null;
         List<Polyline> phaseIcrvs { get; set; } = null;
         List<Point3d> localMax { get; set; } = null;
         List<Polyline> phaseIIcrvs { get; set; } = null;
+        List<Polyline> phaseIIIcrvs { get; set; } = null;
         List<Line> truss { get; set; } = null;
 
         public PSLWorker() : base(null)
@@ -122,10 +122,10 @@ namespace Krill.Grasshopper
             // ...
             ReportProgress(Id, 0);
 
-            pLine = new List<Polyline>();
             phaseIcrvs = new List<Polyline>();
             localMax = new List<Point3d>();
             phaseIIcrvs = new List<Polyline>();
+            phaseIIIcrvs = new List<Polyline>();
             truss = new List<Line>();
 
             PSL psl = new PSL(post, BCs, startPoints, scaleDelta, tol, offsetTol, intTol);
@@ -156,8 +156,11 @@ namespace Krill.Grasshopper
                 localMax.AddRange(psl.pI[i].locMaxPts);
             }                
 
-            for (int i = 0; i < psl.pII.Count; i++)
-                phaseIIcrvs.Add(psl.pII[i].pLine);
+            for (int i = 0; i < psl.pIIcrvs.Count; i++)
+                phaseIIcrvs.Add(psl.pIIcrvs[i]);
+
+            for (int i = 0; i < psl.pIIIcrvs.Count; i++)
+                phaseIIIcrvs.Add(psl.pIIIcrvs[i]);
 
             truss.AddRange(psl.truss);           
 
@@ -209,14 +212,14 @@ namespace Krill.Grasshopper
             if (CancellationToken.IsCancellationRequested)
                 return;
 
-            if (!(pLine is null))
-                DA.SetDataList(0, pLine);
             if (!(phaseIcrvs is null))
-                DA.SetDataList(1, phaseIcrvs);
+                DA.SetDataList(0, phaseIcrvs);
             if (!(localMax is null))
-                DA.SetDataList(2, localMax);
+                DA.SetDataList(1, localMax);
             if (!(phaseIIcrvs is null))
-                DA.SetDataList(3, phaseIIcrvs);
+                DA.SetDataList(2, phaseIIcrvs);
+            if (!(phaseIIIcrvs is null))
+                DA.SetDataList(3, phaseIIIcrvs);
             if (!(truss is null))
                 DA.SetDataList (4, truss);
         }
