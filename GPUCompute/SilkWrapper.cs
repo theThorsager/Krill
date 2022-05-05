@@ -21,6 +21,8 @@ namespace GPUCompute
         nint program;
         nint queue;
 
+        public string platformDevice = "";
+
         // Kernels
         nint kernel_forcesA;
         nint kernel_forcesB;
@@ -117,6 +119,19 @@ namespace GPUCompute
                 return "No device could be found";
 
             endLoop:
+            {
+                api.GetPlatformInfo(platform, (uint)CLEnum.PlatformName, 0, null, out nuint stringlength);
+                Span<byte> bytearrPlatform = new byte[stringlength];
+                api.GetPlatformInfo(platform, (uint)CLEnum.PlatformName, stringlength, bytearrPlatform, (nuint*)null);
+
+                api.GetDeviceInfo(device, (uint)CLEnum.DeviceName, 0, null, out stringlength);
+                Span<byte> bytearrDevice = new byte[stringlength];
+                api.GetDeviceInfo(device, (uint)CLEnum.DeviceName, stringlength, bytearrDevice, (nuint*)null);
+
+                platformDevice = new string(bytearrPlatform.ToArray().Select(x => (char)x).ToArray());
+                platformDevice += ": ";
+                platformDevice += new string(bytearrDevice.ToArray().Select(x => (char)x).ToArray());
+            }
 
             // Context
             context = api.CreateContext(null, 1, in device, null, null, out err);

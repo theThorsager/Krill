@@ -36,7 +36,8 @@ namespace Krill.Grasshopper
         protected override void RegisterOutputParams(GH_Component.GH_OutputParamManager pManager)
         {
             pManager.AddTextParameter("devices", "devices", "Avalible devices", GH_ParamAccess.list);
-            pManager.AddTextParameter("errors", "errors", "OpenCL errors found.", GH_ParamAccess.list);
+            pManager.AddTextParameter("device", "device", "Selected device", GH_ParamAccess.item);
+            pManager.AddTextParameter("log", "log", "OpenCL errors found.", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -61,10 +62,16 @@ namespace Krill.Grasshopper
             wrapper = new SilkWrapper();
             string errors = wrapper.Init();
 
-            errors = errors ?? "";
+            var errorList = new List<string>(wrapper.errorList);
+            if (errors != null)
+                errorList = errorList.Concat(errors.Split('\n')).ToList();
+
+            if (errorList.Count > 0)
+                AddRuntimeMessage(GH_RuntimeMessageLevel.Error, "OpenCL errors found. See log for details.");
 
             DA.SetDataList(0, wrapper.QueryDevices());
-            DA.SetDataList(1, wrapper.errorList.Concat(errors.Split('\n')));
+            DA.SetData(1, wrapper.platformDevice);
+            DA.SetDataList(2, errorList);
 
             wrapper.Finilize();
         }
