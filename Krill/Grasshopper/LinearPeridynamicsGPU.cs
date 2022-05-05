@@ -378,6 +378,9 @@ namespace Krill.Grasshopper
                 oldinput = input;
 
                 oldstate.LastUpdate(mask, neighOff, model, i);
+
+                if (CancellationToken.IsCancellationRequested)
+                    return;
             }
             Done();
         }
