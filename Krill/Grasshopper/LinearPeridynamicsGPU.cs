@@ -41,8 +41,11 @@ namespace Krill.Grasshopper
         {
             this.RequestCancellation();
             BaseWorker.SetData(null);   // Dirty way to disable the conduit
-            wrapper.Finilize();
             base.RemovedFromDocument(document);
+            lock (wrapperLock)
+            {
+                wrapper.Finilize();
+            }
         }
         public SilkWrapper wrapper;
 
