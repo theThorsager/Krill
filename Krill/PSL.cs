@@ -484,7 +484,7 @@ namespace Krill
                 }
             }
         }
-        
+
         public void DoPhaseIII()
         {
             /////////////////////////////////////////////////////////////////////////////////////////
@@ -544,7 +544,7 @@ namespace Krill
                         if (!loadPath.IsValid)
                             continue;
 
-                    Curve potIII = Curve.CreateInterpolatedCurve(loadPath, 1);
+                        Curve potIII = Curve.CreateInterpolatedCurve(loadPath, 1);
 
                         List<Tuple<double, Point3d>> tValsAndPts = new List<Tuple<double, Point3d>>();
 
@@ -576,19 +576,20 @@ namespace Krill
                             }
                         }
 
-                    if (pts.Count > 1)
-                    {
-                        for (int ii = 0; ii < pts.Count - 1; ii++)
+                        if (pts.Count > 1)
                         {
-                            Line l = new Line(pts[ii], pts[ii + 1]);
-                            truss.Add(l);
-                            pIIIcrvs.Add(loadPath);
+                            for (int ii = 0; ii < pts.Count - 1; ii++)
+                            {
+                                Line l = new Line(pts[ii], pts[ii + 1]);
+                                truss.Add(l);
+                                pIIIcrvs.Add(loadPath);
+                            }
                         }
                     }
+
+
+
                 }
-
-                
-
             }
         }
 
