@@ -126,7 +126,7 @@ namespace Krill
             SetNeighbourList();
         }
 
-        public double ArmijoStep(double[] gradient, double[] gradientA, ref double a, out double stepLength, double gamma)
+        public double ArmijoStep(double[] gradient, ref double a, out double stepLength, double gamma)
         {
             double c1 = 0.001;
 
@@ -141,6 +141,32 @@ namespace Krill
             {
                 a *= 0.5;
                 this.ApplyGradient(gradient, a - lastA);
+                this.SetData(null);
+                lastA = a;
+                newValue = ComputeValue();
+
+                expectedValue = initialValue - c1 * a * dot;
+
+                stepLength = a * dot;
+
+            } while (newValue > expectedValue && stepLength > 1e-16);
+
+            return newValue;
+        }
+
+        public double ArmijoStepA(double[] gradientA, ref double a, out double stepLength, double gamma)
+        {
+            double c1 = 0.001;
+
+            double initialValue = objectiveValue;
+            double dot = Vector.DotProduct(nElements, gradientA, gradientA);
+
+            double newValue, expectedValue;
+            a *= 2.2;
+            double lastA = 0;
+            do
+            {
+                a *= 0.5;
                 this.ApplyGradientA(gradientA, a - lastA);
                 this.SetData(null);
                 lastA = a;
@@ -271,6 +297,20 @@ namespace Krill
                 gradient[i] = grad;
             }
         }
+
+        public void ConstrainValuesA()
+        {
+            // Gradient projection for box support
+            for (int i = 0; i < nElements; i++)
+            {
+                double val = areaFactor[i];
+
+                val = Math.Max(Math.Min(1.0, val), 0);
+
+                areaFactor[i] = val;
+            }
+        }
+
         //public void ApplyBC(Containers.DiscreteBoundaryConditionDirechlet bcD)
         //{
         //    int i = FindPoint(bcD.pts);
@@ -376,6 +416,7 @@ namespace Krill
         public void ApplyGradientA(double[] gradientA, double factor = 1)
         {
             Vector.Add(nElements, factor, gradientA, areaFactor, areaFactor);
+            ConstrainValuesA();
         }
         public double ComputeValue()
         {
