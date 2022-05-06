@@ -52,7 +52,7 @@ namespace Krill.Grasshopper
             if (device_id >= 0)
             {
                 // write to file
-                string path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grasshopper/Libraries/Device_Index.txt");
+                string path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grasshopper/Libraries/Krill/Device_Index.txt");
 
                 string text = device_id.ToString();
                 File.WriteAllText(path, text);

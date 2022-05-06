@@ -87,7 +87,7 @@ namespace GPUCompute
                 return "No Platform";
 
             int device_index = 0;
-            string pathD = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grasshopper/Libraries/Device_Index.txt");
+            string pathD = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grasshopper/Libraries/Krill/Device_Index.txt");
             if (System.IO.File.Exists(pathD))
             {
                 string number = System.IO.File.ReadAllText(pathD);
@@ -146,7 +146,7 @@ namespace GPUCompute
 
             {
                 // Read source from file
-                string path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grasshopper/Libraries/peridynamics.cl");
+                string path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "Grasshopper/Libraries/Krill/peridynamics.cl");
                 string source = System.IO.File.ReadAllText(path);
 
                 string[] sources = new string[] { source };
@@ -569,6 +569,81 @@ namespace GPUCompute
             api.EnqueueReadImage(queue, image, true, offset, global_size, rowpitch, slicepitch, temp, 0, (nint*)null, (nint*)null);
 
             handle.Free();
+
+            return values.Sum();
+        }
+
+        public float TestReduction()
+        {
+            int n = 8 * 32;
+            int err;
+            int num = n * n * n;
+            int size = reduction_factor;
+
+            int threads = num / reduction_factor;
+
+            // create buffers
+            buffer_dampeningA = api.CreateBuffer(context, CLEnum.MemReadWrite, (nuint)(2 * n * n * n * sizeof(float)), null, &err);
+            buffer_dampeningB = api.CreateBuffer(context, CLEnum.MemReadWrite, (nuint)(2 * size * sizeof(float)), null, &err);
+            buffer_dampeningC = api.CreateBuffer(context, CLEnum.MemReadWrite, sizeof(float), null, &err);
+
+            // Set arguments
+            api.SetKernelArg(kernel_reduce_dampA, 0, (nuint)sizeof(nint), buffer_dampeningA);
+            api.SetKernelArg(kernel_reduce_dampA, 1, (nuint)sizeof(nint), buffer_dampeningB);
+            api.SetKernelArg(kernel_reduce_dampA, 2, (nuint)(2 * local_linear * sizeof(float)), null);
+            api.SetKernelArg(kernel_reduce_dampA, 3, (nuint)sizeof(int), &num);
+            api.SetKernelArg(kernel_reduce_dampA, 4, (nuint)sizeof(int), &size);
+
+            api.SetKernelArg(kernel_reduce_dampB, 0, (nuint)sizeof(nint), buffer_dampeningB);
+            api.SetKernelArg(kernel_reduce_dampB, 1, (nuint)sizeof(nint), buffer_dampeningA);
+            api.SetKernelArg(kernel_reduce_dampB, 2, (nuint)(2 * local_linear * sizeof(float)), null);
+            int reducednum = (int)Math.Ceiling(num / (double)(size * local_linear));
+            api.SetKernelArg(kernel_reduce_dampB, 3, (nuint)sizeof(int), &reducednum);
+            api.SetKernelArg(kernel_reduce_dampB, 4, (nuint)sizeof(int), &size);
+
+            // write to Buffer
+            // ...
+            float[] valuesA = new float[num];
+            valuesA = valuesA.SelectMany(x => new float[] { 1.0f, -1.0f }).ToArray();
+            GCHandle handle = GCHandle.Alloc(valuesA, GCHandleType.Pinned);
+            void* ptr = handle.AddrOfPinnedObject().ToPointer();
+            api.EnqueueWriteBuffer(queue, buffer_dampeningA, true, 0, (nuint)(2 * num * sizeof(float)), ptr, 0, (nint*)null, (nint*)null);
+            handle.Free();
+            api.Finish(queue);
+
+            // Do the thing
+            // reduce loop
+            int n_output = n * n * n;
+            // n_output >= (512 * 256 * 512 * 256))
+            // would give problems, but it would also already have overflowed
+
+            int g_size;
+            int l_size = local_linear;
+
+            n_output = (int)Math.Ceiling(n_output / (double)(l_size * reduction_factor));
+            g_size = n_output * l_size;
+
+            err = api.EnqueueNdrangeKernel(queue, kernel_reduce_dampA, 1, 0, (nuint)g_size, (nuint)l_size, 0, (nint*)null, (nint*)null);
+            api.Finish(queue);
+
+            n_output = (int)Math.Ceiling(n_output / (double)(l_size * reduction_factor));
+            g_size = n_output * l_size;
+
+            err = api.EnqueueNdrangeKernel(queue, kernel_reduce_dampB, 1, 0, (nuint)g_size, (nuint)l_size, 0, (nint*)null, (nint*)null);
+            api.Finish(queue);
+
+
+
+            // read from Buffer
+            float[] values = new float[2];
+            handle = GCHandle.Alloc(values, GCHandleType.Pinned);
+            ptr = handle.AddrOfPinnedObject().ToPointer();
+            api.EnqueueReadBuffer(queue, buffer_dampeningA, true, 0, (nuint)(2 * sizeof(float)), ptr, 0, (nint*)null, (nint*)null);
+            handle.Free();
+
+            api.ReleaseMemObject(buffer_dampeningA);
+            api.ReleaseMemObject(buffer_dampeningB);
+            api.ReleaseMemObject(buffer_dampeningC);
 
             return values.Sum();
         }
