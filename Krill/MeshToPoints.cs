@@ -33,6 +33,9 @@ namespace Krill
 
             int n = (int) Math.Ceiling((bbox.Diagonal.MaximumCoordinate) / Delta + 0.002);
             n += nPadding * 2;
+
+            n = (int)Math.Ceiling(n / 8.0) * 8;
+
             Point3d origin = bbox.Min - new Vector3d(
                 (nPadding) * Delta, 
                 (nPadding) * Delta, 

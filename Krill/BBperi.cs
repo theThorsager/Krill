@@ -267,11 +267,11 @@ namespace Krill
                             int J = I + nlist[a];
 
                             if (startVoxels.cellValues[J] != 0)
-                                CalcPartialDensity(I, J, delta);
+                                CalcPartialDensity(I, J, delta, a);
 
                             J = I - nlist[a];
                             if (startVoxels.cellValues[J] != 0)
-                                CalcPartialDensity(I, J, delta);
+                                CalcPartialDensity(I, J, delta, a);
                         }
 
                         densities.cellValues[I] -= spring.cellValues[I];
@@ -286,11 +286,11 @@ namespace Krill
             }
         }
 
-        void CalcPartialDensity(int i, int j, double delta)
+        void CalcPartialDensity(int i, int j, double delta, int a)
         {
-            Vector3d xi_vec = startVoxels.IndexToPoint(j) - startVoxels.IndexToPoint(i);
-            double l = xi_vec.Length;
-            
+            Vector3d xi_vec = i < j ? nlist_xi[a] : -nlist_xi[a];
+            double l = nlist_xi_length[a];
+
             xi_vec.X *= xi_vec.X;
             xi_vec.Y *= xi_vec.Y;
             xi_vec.Z *= xi_vec.Z;

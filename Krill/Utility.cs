@@ -46,6 +46,41 @@ namespace Krill
             return result.Where(x => x > 0).ToHashSet().OrderBy(x => x).ToArray();
         }
 
+        public static float[] GetNeighbourXiGPU(double r, double Delta)
+        {
+            int rsquared = (int)(r * r);
+            int rfloor = (int)r;
+
+            int n = rfloor * 2 + 1;
+
+
+
+            var result = new float[n * n * n * 4];
+
+            for (int k = -rfloor; k <= rfloor; k++)
+            {
+                for (int j = -rfloor; j <= rfloor; j++)
+                {
+                    for (int i = -rfloor; i <= rfloor; i++)
+                    {
+                        if (i * i + j * j + k * k <= rsquared)
+                        {
+                            int I = (i+rfloor) + n * (j + rfloor) + n * n * (k + rfloor);
+
+                            Vector3d xi = new Vector3d(i, j, k) * Delta;
+
+                            result[I*4+0] = (float)xi.X;
+                            result[I*4+1] = (float)xi.Y;
+                            result[I*4+2] = (float)xi.Z;
+                            result[I*4+3] = (float)xi.Length;
+                        }
+                    }
+                }
+            }
+
+            return result;
+        }
+
         public static int[] GetNeighbourOffsets2d(int n, double r)
         {
             int rsquared = (int)(r * r);

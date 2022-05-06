@@ -16,6 +16,10 @@
   </ItemGroup>
   
   <ItemGroup>
+    <ProjectReference Include="..\GPUCompute\GPUCompute.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
     <Reference Include="System.Windows.Forms" />
   </ItemGroup>
   
@@ -26,11 +30,11 @@
   </PropertyGroup>
   
   <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="xcopy &quot;$(TargetDir)$(TargetFileName)&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
-	  <Exec Command="xcopy &quot;$(TargetDir)GrasshopperAsyncComponent.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
-	  <Exec Command="xcopy &quot;$(TargetDir)BriefFiniteElementNet.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
-	  <Exec Command="xcopy &quot;$(TargetDir)BriefFiniteElementNet.Common.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
-	  <Exec Command="xcopy &quot;$(TargetDir)CSparse.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries&quot; /Y" />
+    <Exec Command="xcopy &quot;$(TargetDir)$(TargetFileName)&quot;  &quot;$(APPDATA)/Grasshopper/libraries/Krill\&quot; /Y /I" />
+	  <Exec Command="xcopy &quot;$(TargetDir)GrasshopperAsyncComponent.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries/Krill\&quot; /Y /I" />
+	  <Exec Command="xcopy &quot;$(TargetDir)BriefFiniteElementNet.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries/Krill\&quot; /Y /I" />
+	  <Exec Command="xcopy &quot;$(TargetDir)BriefFiniteElementNet.Common.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries/Krill\&quot; /Y /I" />
+	  <Exec Command="xcopy &quot;$(TargetDir)CSparse.dll&quot;  &quot;$(APPDATA)/Grasshopper/libraries/Krill\&quot; /Y /I" />
   </Target>
 
 </Project>
