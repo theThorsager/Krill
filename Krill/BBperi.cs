@@ -43,6 +43,7 @@ namespace Krill
     internal class BBperi
     {
         const int maskbit = 0x000000FF;
+        const double nu = 0.25;
 
         public double bond_stiffness;
         public Voxels<int> startVoxels;
@@ -669,6 +670,8 @@ namespace Krill
             // Find on how many voxels the load will be placed, such that the load per exterior voxel can be set
 
             // Redistribute those onto the interior voxels through the bond stiffnesses
+            if (bc.load.SquareLength < 1e-12)
+                return;
 
             var xis = nlist_xi.Zip(nlist_xi_length, (xi, l) => xi / l).ToArray();
 
@@ -724,6 +727,9 @@ namespace Krill
                 if (connects)
                 {
                     count++;
+
+                    localLoadFactor = localLoad * localLoadFactor.Length;
+
                     loads.Add(localLoadFactor);
                     indices.Add(i);
                 }
@@ -821,14 +827,45 @@ namespace Krill
             double l = xi_vec.Length;
             stiffnessMod.cellValues[i] += l;
 
-            xi_vec.X *= xi_vec.X;
-            xi_vec.Y *= xi_vec.Y;
-            xi_vec.Z *= xi_vec.Z;
-            
+            Vector3d vec = new Vector3d();
 
-            xi_vec *= bond_stiffness * vol / (l * l * l);
+            if (bc.lockX && !bc.lockY && !bc.lockZ)
+            {
+                vec.X = xi_vec.X*xi_vec.X - nu * xi_vec.X*xi_vec.Y - nu * xi_vec.X*xi_vec.Z;
+            }
+            else if (!bc.lockX && bc.lockY &&  !bc.lockZ)
+            {
+                vec.Y = xi_vec.Y * xi_vec.Y - nu * xi_vec.Y * xi_vec.X - nu * xi_vec.Y * xi_vec.Z;
+            }
+            else if (!bc.lockX && !bc.lockY && bc.lockZ)
+            {
+                vec.Z = xi_vec.Z * xi_vec.Z - nu * xi_vec.Z * xi_vec.X - nu * xi_vec.Z * xi_vec.Y;
+            }
+            else if (bc.lockX && bc.lockY && !bc.lockZ)
+            {
+                vec.X = xi_vec.X * xi_vec.X - nu * xi_vec.X * xi_vec.Z;
+                vec.Y = xi_vec.Y * xi_vec.Y - nu * xi_vec.Y * xi_vec.Z;
+            }
+            else if (bc.lockX && !bc.lockY && bc.lockZ)
+            {
+                vec.X = xi_vec.X * xi_vec.X - nu * xi_vec.X * xi_vec.Y;
+                vec.Z = xi_vec.Z * xi_vec.Z - nu * xi_vec.Z * xi_vec.Y;
+            }
+            else if (!bc.lockX && bc.lockY && bc.lockZ)
+            {
+                vec.Y = xi_vec.Y * xi_vec.Y - nu * xi_vec.Y * xi_vec.X;
+                vec.Z = xi_vec.Z * xi_vec.Z - nu * xi_vec.Z * xi_vec.X;
+            }
+            else
+            {
+                vec.X = xi_vec.X * xi_vec.X;
+                vec.Y = xi_vec.Y * xi_vec.Y;
+                vec.Z = xi_vec.Z * xi_vec.Z;
+            }
 
-            return -xi_vec;
+            vec *= bond_stiffness * vol / (l * l * l);
+
+            return -vec;
         }
 
         public void SetVolumes()
