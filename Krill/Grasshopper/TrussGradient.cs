@@ -126,48 +126,51 @@ namespace Krill.Grasshopper
                 energy = double.NaN;
             }
             int iter = 0;
-            while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
+            energyTruss.SetPenalties(0.5);
+            for (int penIter = 0; penIter < 8; penIter++)
             {
-                a = firstA;
-                // Node Locations
-                for (; iter < n; iter++)
+                while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
                 {
-                    if (energyTruss.mechanisim || double.IsNaN(energy))
+                    a = firstA;
+                    // Node Locations
+                    for (; iter < n; iter++)
                     {
-                        AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
-                        energy = double.NaN;
-                        break;
+                        if (energyTruss.mechanisim || double.IsNaN(energy))
+                        {
+                            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                            energy = double.NaN;
+                            break;
+                        }
+
+                        energyTruss.ComputeGradient(ref gradient);
+                        energyTruss.ConstrainGradient(gradient);
+                        energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
+                        // Steplength is the square distance moved ish (as if everything is thought of as one vector)
+                        if (stepLength < 1e-16)
+                            break;
+
                     }
-
-                    energyTruss.ComputeGradient(ref gradient);
-                    energyTruss.ConstrainGradient(gradient);
-                    energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
-                    // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                    if (stepLength < 1e-16)
-                        break;
-
-                    //energyTruss.penaltyFactor *= 2;
-                }
-                intermidiateEnergy = energy;
-                a = firstA;
-                // Element size
-                for (; iter < n; iter++)
-                {
-                    if (energyTruss.mechanisim || double.IsNaN(energy))
+                    intermidiateEnergy = energy;
+                    a = firstA;
+                    // Element size
+                    for (; iter < n; iter++)
                     {
-                        AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
-                        energy = double.NaN;
-                        break;
+                        if (energyTruss.mechanisim || double.IsNaN(energy))
+                        {
+                            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                            energy = double.NaN;
+                            break;
+                        }
+
+                        energyTruss.ComputeGradientA(ref gradientA);
+                        energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
+                        // Steplength is the square distance moved ish (as if everything is thought of as one vector)
+                        if (stepLength < 1e-16)
+                            break;
+
                     }
-
-                    energyTruss.ComputeGradientA(ref gradientA);
-                    energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
-                    // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                    if (stepLength < 1e-16)
-                        break;
-
-                    //energyTruss.penaltyFactor *= 2;
                 }
+                energyTruss.ModifyPenalties(4);
             }
 
             // Post processing

@@ -407,6 +407,22 @@ namespace Krill
                 AsE[i] = 1;
             }
         }
+        public void SetPenalties(double factor)
+        {
+            utilizationFactor = factor;
+            penaltyFactor = factor;
+
+            // This isn't a real penalty only a cost function
+            // orthogonalityFactor = factor;
+        }
+        public void ModifyPenalties(double factor)
+        {
+            utilizationFactor *= factor;
+            penaltyFactor *= factor;
+
+            // This isn't a real penalty only a cost function
+            // orthogonalityFactor *= factor;
+        }
 
         public void ApplyGradient(double[] gradient, double factor = 1)
         {
@@ -446,10 +462,11 @@ namespace Krill
 
         double maxStressC = 1;
 
-        double utilizationFactor = 0;
+        double utilizationFactor = 1;
         double utilizationMargin = 0.1;
 
-        public double penaltyFactor = 1;
+        double penaltyFactor = 1;
+        const bool useWfunction = false;
 
         double orthogonalityFactor = 1;
         double orthoCutoff = 1;
@@ -569,7 +586,14 @@ namespace Krill
                 {
                     double stress = Esteel * ep;
                     double t = stress - fyd;
-                    penalty += t * t * stress * stress;
+
+                    if (useWfunction)
+                        penalty += t * t * stress * stress;
+                    else
+                    {
+                        if (t > 0)
+                            penalty += t * t;
+                    }
                 }
 
                 // Ortho
@@ -598,7 +622,15 @@ namespace Krill
                 {
                     double stress = Esteel * ep;
                     double t = stress - fyd;
-                    penalty += t * t * stress * stress;
+
+                    if (useWfunction)
+                        penalty += t * t * stress * stress;
+                    else
+                    {
+                        if (t > 0)
+                            penalty += t * t;
+                    }
+
                 }
                 if (ep > 0)
                 {
@@ -670,8 +702,19 @@ namespace Krill
                 // Penalty
                 if (ep > 0)
                 {
-                    double stress = Esteel * ep;
-                    penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    if (useWfunction)
+                    {
+                        double stress = Esteel * ep;
+                        penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    }
+                    else
+                    {
+                        double t = ep * Esteel - fyd;
+                        if (t > 0)
+                        {
+                            penalty += 2 * t * deps * Esteel;
+                        }
+                    }
                 }
             }
 
@@ -702,8 +745,19 @@ namespace Krill
                 // Penalty
                 if (ep > 0)
                 {
-                    double stress = Esteel * ep;
-                    penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    if (useWfunction)
+                    {
+                        double stress = Esteel * ep;
+                        penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    }
+                    else
+                    {
+                        double t = ep * Esteel - fyd;
+                        if (t > 0)
+                        {
+                            penalty += 2 * t * deps * Esteel;
+                        }
+                    }
                 }
             }
 
@@ -754,8 +808,19 @@ namespace Krill
                 // Penalty
                 if (ep > 0)
                 {
-                    double stress = Esteel * ep;
-                    penalty -= 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    if (useWfunction)
+                    {
+                        double stress = Esteel * ep;
+                        penalty -= 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    }
+                    else
+                    {
+                        double t = ep * Esteel - fyd;
+                        if (t > 0)
+                        {
+                            penalty += 2 * t * deps * Esteel;
+                        }
+                    }
                 }
             }
 
