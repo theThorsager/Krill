@@ -126,21 +126,22 @@ namespace Krill.Grasshopper
                 energy = double.NaN;
             }
             int iter = 0;
-            energyTruss.SetPenalties(0.5);
+            energyTruss.SetPenalties(5);
             for (int penIter = 0; penIter < 8; penIter++)
             {
+                intermidiateEnergy = double.MaxValue;
                 while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
                 {
                     a = firstA;
                     // Node Locations
                     for (; iter < n; iter++)
                     {
-                        if (energyTruss.mechanisim || double.IsNaN(energy))
-                        {
-                            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
-                            energy = double.NaN;
-                            break;
-                        }
+                        //if (energyTruss.mechanisim || double.IsNaN(energy))
+                        //{
+                        //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                        //    energy = double.NaN;
+                        //    break;
+                        //}
 
                         energyTruss.ComputeGradient(ref gradient);
                         energyTruss.ConstrainGradient(gradient);
@@ -155,12 +156,12 @@ namespace Krill.Grasshopper
                     // Element size
                     for (; iter < n; iter++)
                     {
-                        if (energyTruss.mechanisim || double.IsNaN(energy))
-                        {
-                            AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
-                            energy = double.NaN;
-                            break;
-                        }
+                        //if (energyTruss.mechanisim || double.IsNaN(energy))
+                        //{
+                        //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                        //    energy = double.NaN;
+                        //    break;
+                        //}
 
                         energyTruss.ComputeGradientA(ref gradientA);
                         energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
@@ -171,6 +172,8 @@ namespace Krill.Grasshopper
                     }
                 }
                 energyTruss.ModifyPenalties(4);
+                energyTruss.SetData(null);
+                energy = energyTruss.ComputeValue();
             }
 
             // Post processing

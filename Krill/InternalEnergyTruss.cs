@@ -412,6 +412,8 @@ namespace Krill
             utilizationFactor = factor;
             penaltyFactor = factor;
 
+            smoothingFunctionScale = 0.05;
+
             // This isn't a real penalty only a cost function
             // orthogonalityFactor = factor;
         }
@@ -420,8 +422,32 @@ namespace Krill
             utilizationFactor *= factor;
             penaltyFactor *= factor;
 
+            smoothingFunctionScale /= factor;
+
             // This isn't a real penalty only a cost function
             // orthogonalityFactor *= factor;
+        }
+
+        double SmoothingFunction(double x, double scale)
+        {
+            double u = x / scale;
+            if (u <= 0)
+                return 0;
+            else if (u >= 1)
+                return 1;
+
+            return -2.0 * u * u * u + 3.0 * u * u;
+        }
+
+        double dSmoothingFunction(double x, double scale)
+        {
+            double u = x / scale;
+            if (u <= 0)
+                return 0;
+            else if (u >= 1)
+                return 0;
+
+            return -6.0 * u * u + 6.0 * u;
         }
 
         public void ApplyGradient(double[] gradient, double factor = 1)
@@ -468,8 +494,10 @@ namespace Krill
         double penaltyFactor = 1;
         const bool useWfunction = false;
 
-        double orthogonalityFactor = 1;
-        double orthoCutoff = 1;
+        double orthogonalityFactor = 0;
+        double orthoCutoff = 0.01;
+
+        double smoothingFunctionScale = 0.05;
 
         public void ComputeGradient(ref double[] gradient)
         {
@@ -572,7 +600,7 @@ namespace Krill
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += areaFactor[i] * areaFactor[i] * As[i] * As[i] * ls[i] * ep;
+                    reinforcement += areaFactor[i] * As[i] * ls[i] * SmoothingFunction(E * ep, smoothingFunctionScale);
                 }
 
                 // Utilization
@@ -610,7 +638,7 @@ namespace Krill
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += AsE[i] * AsE[i] * lsE[i] * ep;
+                    reinforcement += AsE[i] * lsE[i] * SmoothingFunction(E * ep, smoothingFunctionScale);
                 }
                 // Utilization
                 double cap = capacityReduction[ExtraElements[i].Item2];
@@ -674,12 +702,16 @@ namespace Krill
                 double deps = Dstrain(i, dindex, dl, dus);
                 double dA = dAs[i];
 
+                double smooth = SmoothingFunction(E * ep, smoothingFunctionScale);
+                double dsmooth = dSmoothingFunction(E * ep, smoothingFunctionScale) * E * deps;
+
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += areaFactor[i] * areaFactor[i] *
-                        (2 * ep * l * dA * A +
-                        (deps * l + ep * dl) * A * A);
+                    reinforcement += areaFactor[i] * (
+                        dA * l * smooth +
+                        A * dl * smooth +
+                        A * l * dsmooth);
                 }
 
                 // Utilization
@@ -728,12 +760,16 @@ namespace Krill
                 double dA = 0; // E * A * deps / fyd;
                 double deps = DstrainE(i, dindex, dl, dus, dA);
 
+                double smooth = SmoothingFunction(E * ep, smoothingFunctionScale);
+                double dsmooth = dSmoothingFunction(E * ep, smoothingFunctionScale) * E * deps;
+
                 // Reinforcement
                 if (ep > 0)
                 {
                     reinforcement += 
-                        (2 * ep * l * dA * A +
-                        (deps * l + ep * dl) * A * A);
+                        dA * l * smooth + 
+                        A * dl * smooth +
+                        A * l * dsmooth;
                 }
 
                 // Utilization
@@ -785,10 +821,15 @@ namespace Krill
                 double deps = DstrainA(i, dus);
                 double dfactor = i == dindex ? 1 : 0;
 
+                double smooth = SmoothingFunction(E * ep, smoothingFunctionScale);
+                double dsmooth = dSmoothingFunction(E * ep, smoothingFunctionScale) * E * deps;
+
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += l * A * A * areaFactor[i] * (2 * dfactor * ep + areaFactor[i] * deps);
+                    reinforcement +=
+                        dfactor * A * l * smooth +
+                        areaFactor[i] * A * l * dsmooth;
                 }
 
                 // Utilization
@@ -913,7 +954,7 @@ namespace Krill
             double areaE = n.X * boxE.Y * boxE.Z + n.Y * boxE.X * boxE.Z + n.Z * boxE.X * boxE.Y;
 
             endAreas[i] = new Tuple<double, double>(areaS, areaE);
-            return (areaS + areaE) * 0.5;
+            return Math.Max((areaS + areaE) * 0.5, 0.0);
         }
 
         private double dArea(int i, int dindex)
