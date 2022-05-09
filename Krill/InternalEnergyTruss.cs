@@ -442,10 +442,8 @@ namespace Krill
             return Compute();
         }
 
-        double strainFactorMain = 0;
         double reinforcmentFactor = 1;
 
-        double strainFactor = 5;
         double maxStressC = 1;
 
         double utilizationFactor = 0;
@@ -545,7 +543,6 @@ namespace Krill
 
         private double Compute()
         {
-            double strainEnergy = 0.0;
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
@@ -554,10 +551,6 @@ namespace Krill
             for (int i = 0; i < nElements; i++)
             {
                 double ep = eps[i];
-
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor * E * areaFactor[i] * As[i] * ls[i] * ep * ep;
 
                 // Reinforcement
                 if (ep > 0)
@@ -577,12 +570,9 @@ namespace Krill
                     double stress = Esteel * ep;
                     double t = stress - fyd;
                     penalty += t * t * stress * stress;
-
-                    //////////////
-                    //double t2 = Esteel * ep * As[i];
-                    //penalty += t2 * t2;
                 }
 
+                // Ortho
                 if (ep > 0)
                 {
                     orthogonality += EvaluateElement(i, orthoCutoff);
@@ -592,10 +582,6 @@ namespace Krill
             for (int i = 0; i < nExtraElements; i++)
             {
                 double ep = StrainE(i);
-
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor * E * AsE[i] * lsE[i] * ep * ep;
 
                 // Reinforcement
                 if (ep > 0)
@@ -621,7 +607,6 @@ namespace Krill
             }
 
             double result = 
-                strainFactorMain * strainEnergy + 
                 reinforcement * reinforcmentFactor + 
                 utilization * utilizationFactor + 
                 penalty * penaltyFactor +
@@ -632,7 +617,6 @@ namespace Krill
         }
         private double ComputeDerivative(int dindex)
         {
-            double strainEnergy = 0.0;
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
@@ -657,13 +641,6 @@ namespace Krill
                 double dl = dls[i];
                 double deps = Dstrain(i, dindex, dl, dus);
                 double dA = dAs[i];
-
-
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor *
-                    areaFactor[i] * E * (2 * A * l * deps * ep + 
-                    (dA * l + A * dl) * ep * ep);
 
                 // Reinforcement
                 if (ep > 0)
@@ -708,13 +685,6 @@ namespace Krill
                 double dA = 0; // E * A * deps / fyd;
                 double deps = DstrainE(i, dindex, dl, dus, dA);
 
-
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy -= factor *
-                    E * (2 * A * l * deps * ep +
-                    (dA * l + A * dl) * ep * ep);
-
                 // Reinforcement
                 if (ep > 0)
                 {
@@ -737,13 +707,15 @@ namespace Krill
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = 
+                reinforcement * reinforcmentFactor + 
+                utilization * utilizationFactor + 
+                penalty * penaltyFactor;
 
             return result;
         }
         private double ComputeDerivativeA(int dindex)
         {
-            double strainEnergy = 0.0;
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
@@ -758,11 +730,6 @@ namespace Krill
 
                 double deps = DstrainA(i, dus);
                 double dfactor = i == dindex ? 1 : 0;
-
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor *
-                    E * A * l * ep * (ep * dfactor + 2 * areaFactor[i] * deps);
 
                 // Reinforcement
                 if (ep > 0)
@@ -792,7 +759,10 @@ namespace Krill
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = 
+                reinforcement * reinforcmentFactor + 
+                utilization * utilizationFactor + 
+                penalty * penaltyFactor;
 
             return -result * 0.01;
         }
