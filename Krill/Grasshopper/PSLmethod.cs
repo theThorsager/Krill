@@ -162,7 +162,9 @@ namespace Krill.Grasshopper
             for (int i = 0; i < psl.pIIIcrvs.Count; i++)
                 phaseIIIcrvs.Add(psl.pIIIcrvs[i]);
 
-            truss.AddRange(psl.truss);           
+            truss.AddRange(psl.truss);
+            truss.AddRange(psl.loadLines);
+            truss.AddRange(psl.supportLines);
 
             if (CancellationToken.IsCancellationRequested)
                 return;

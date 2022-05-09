@@ -41,6 +41,9 @@ namespace Krill
 
         public List<Line> truss = new List<Line>();
 
+        public List<Line> loadLines = new List<Line>();
+        public List<Line> supportLines = new List<Line>();
+
         public PSL(PostProcessingResults post, List<IBoundaryCondition> BCs, List<Point3d> startPoints, double scaleDelta,
                     double tol, double offsetTol, double intTol)
         {
@@ -67,14 +70,42 @@ namespace Krill
                 -Vector3d.ZAxis
             };
 
+            List<Vector3d> nVec = new List<Vector3d>();
+
             foreach (IBoundaryCondition bc in BCs)
             {
                 if (bc is BoundaryConditionDirechlet bcD)
                     dAreas.Add(bcD.area);
                 else if (bc is BoundaryConditionNuemann bcN)
+                {
                     nAreas.Add(bcN.area);
+                    Vector3d vec = bcN.load;
+                    vec.Unitize();
+                    nVec.Add(vec);
+                }                
+                    
+            }
+
+            // Construct load lines
+            for (int i = 0; i < startPoints.Count; i++)
+            {
+                double minDist = double.MaxValue;
+                int minInd = -1;
+
+                for (int j = 0; j < nAreas.Count; j++)
+                {
+                    if (nAreas[j].ClosestPoint(startPoints[i], out Point3d meshPt, minDist) != -1)
+                    {
+                        minInd = j;
+                        minDist = meshPt.DistanceTo(startPoints[i]);
+                    }                   
+                }
+
+                Point3d pt = startPoints[i] - nVec[minInd] * 2 * delta;
+                loadLines.Add(new Line(pt, startPoints[i]));
             }
         }
+
 
         public void DoPhaseI()
         {
@@ -108,7 +139,7 @@ namespace Krill
                     double t = pLine[i].ClosestParameter(startPoints[j]);
                     Point3d pt = pLine[i].PointAt(t);
 
-                    if (pt.DistanceToSquared(startPoints[j]) < startTol * startTol && pt.DistanceToSquared(pLine[i].First) > startTol * startTol)
+                    if (pt.DistanceToSquared(startPoints[j]) < startTol * startTol && pt.DistanceToSquared(pLine[i].First) > delta * delta)
                         tValsAndInd.Add(new Tuple<double, int>(t, j));
                 }
 
@@ -519,10 +550,11 @@ namespace Krill
 
                 avgNormal.Unitize();
 
-                Point3d[] startPts = new Point3d[2];
-
-                startPts[0] = startPt - avgNormal * offsetTol;   // The method to find this pt needs to be clarified
-                startPts[1] = startPt + avgNormal * offsetTol;
+                Point3d[] startPts = new Point3d[2]
+                {
+                    startPt - avgNormal * offsetTol,
+                    startPt + avgNormal * offsetTol
+                };
 
                 for (int indPt = 0; indPt < startPts.Length; indPt++)
                 {
@@ -530,10 +562,10 @@ namespace Krill
 
                     Vector3d[] pIIIstartDirs = new Vector3d[4]
                     {
-                    norPl.XAxis,
-                    -norPl.XAxis,
-                    norPl.YAxis,
-                    -norPl.YAxis
+                        norPl.XAxis,
+                        -norPl.XAxis,
+                        norPl.YAxis,
+                        -norPl.YAxis
                     };
 
 
@@ -584,11 +616,20 @@ namespace Krill
                                 truss.Add(l);
                                 pIIIcrvs.Add(loadPath);
                             }
+
+                            // Construct support lines
+                            for (int ii = 0; ii < pts.Count; ii++)
+                            {
+                                Point3d testPt = pts[ii] + avgNormal * 2 * delta;
+
+                                if (LERPvonMises(testPt) != 0)
+                                    testPt = pts[ii] - avgNormal * 2 * delta;
+                                 
+                                supportLines.Add(new Line(pts[ii], testPt));
+                            }
+
                         }
                     }
-
-
-
                 }
             }
         }
