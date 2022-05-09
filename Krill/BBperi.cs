@@ -747,7 +747,7 @@ namespace Krill
 
                 double volumeFactor = (double)(nlist.Length * 2.0 + 1.0) / (double)(startVoxels.cellValues[i] >> 20);
 
-                bodyload.cellValues[i] = loads[ii] * factor * volumeFactor;
+                bodyload.cellValues[i] += loads[ii] * factor * volumeFactor;
             }
         }
 

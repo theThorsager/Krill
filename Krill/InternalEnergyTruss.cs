@@ -126,13 +126,12 @@ namespace Krill
             SetNeighbourList();
         }
 
-        public double ArmijoStep(double[] gradient, double[] gradientA, ref double a, out double stepLength, double gamma)
+        public double ArmijoStep(double[] gradient, ref double a, out double stepLength, double gamma)
         {
             double c1 = 0.001;
 
             double initialValue = objectiveValue;
             double dot = Vector.DotProduct(nVariables, gradient, realGradient);
-            dot += Vector.DotProduct(nElements, gradientA, realGradientA);
 
             double newValue, expectedValue;
             a *= 2.2;
@@ -141,6 +140,32 @@ namespace Krill
             {
                 a *= 0.5;
                 this.ApplyGradient(gradient, a - lastA);
+                this.SetData(null);
+                lastA = a;
+                newValue = ComputeValue();
+
+                expectedValue = initialValue - c1 * a * dot;
+
+                stepLength = a * dot;
+
+            } while (newValue > expectedValue && stepLength > 1e-16);
+
+            return newValue;
+        }
+
+        public double ArmijoStepA(double[] gradientA, ref double a, out double stepLength, double gamma)
+        {
+            double c1 = 0.001;
+
+            double initialValue = objectiveValue;
+            double dot = Vector.DotProduct(nElements, gradientA, gradientA);
+
+            double newValue, expectedValue;
+            a *= 2.2;
+            double lastA = 0;
+            do
+            {
+                a *= 0.5;
                 this.ApplyGradientA(gradientA, a - lastA);
                 this.SetData(null);
                 lastA = a;
@@ -271,6 +296,20 @@ namespace Krill
                 gradient[i] = grad;
             }
         }
+
+        public void ConstrainValuesA()
+        {
+            // Gradient projection for box support
+            for (int i = 0; i < nElements; i++)
+            {
+                double val = areaFactor[i];
+
+                val = Math.Max(Math.Min(1.0, val), 0);
+
+                areaFactor[i] = val;
+            }
+        }
+
         //public void ApplyBC(Containers.DiscreteBoundaryConditionDirechlet bcD)
         //{
         //    int i = FindPoint(bcD.pts);
@@ -368,6 +407,48 @@ namespace Krill
                 AsE[i] = 1;
             }
         }
+        public void SetPenalties(double factor)
+        {
+            utilizationFactor = factor;
+            penaltyFactor = factor;
+
+            smoothingFunctionScale = 0.05;
+
+            // This isn't a real penalty only a cost function
+            // orthogonalityFactor = factor;
+        }
+        public void ModifyPenalties(double factor)
+        {
+            utilizationFactor *= factor;
+            penaltyFactor *= factor;
+
+            smoothingFunctionScale /= factor;
+
+            // This isn't a real penalty only a cost function
+            // orthogonalityFactor *= factor;
+        }
+
+        double SmoothingFunction(double x, double scale)
+        {
+            double u = x / scale;
+            if (u <= 0)
+                return 0;
+            else if (u >= 1)
+                return 1;
+
+            return -2.0 * u * u * u + 3.0 * u * u;
+        }
+
+        double dSmoothingFunction(double x, double scale)
+        {
+            double u = x / scale;
+            if (u <= 0)
+                return 0;
+            else if (u >= 1)
+                return 0;
+
+            return -6.0 * u * u + 6.0 * u;
+        }
 
         public void ApplyGradient(double[] gradient, double factor = 1)
         {
@@ -376,6 +457,7 @@ namespace Krill
         public void ApplyGradientA(double[] gradientA, double factor = 1)
         {
             Vector.Add(nElements, factor, gradientA, areaFactor, areaFactor);
+            ConstrainValuesA();
         }
         public double ComputeValue()
         {
@@ -402,16 +484,20 @@ namespace Krill
             return Compute();
         }
 
-        double strainFactorMain = 0;
         double reinforcmentFactor = 1;
 
-        double strainFactor = 5;
         double maxStressC = 1;
 
-        double utilizationFactor = 0;
+        double utilizationFactor = 1;
         double utilizationMargin = 0.1;
 
-        public double penaltyFactor = 1;
+        double penaltyFactor = 1;
+        const bool useWfunction = false;
+
+        double orthogonalityFactor = 0;
+        double orthoCutoff = 0.01;
+
+        double smoothingFunctionScale = 0.05;
 
         public void ComputeGradient(ref double[] gradient)
         {
@@ -425,6 +511,21 @@ namespace Krill
             {
                 if (!fixedVariable[i])
                     gradient[i] = -ComputeDerivative(i);
+            }
+
+            for (int i = 0; i < nElements; i++)
+            {
+                if (eps[i] > 0)
+                {
+                    SetGradients(i, orthoCutoff, gradient);
+                }
+            }
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                if (StrainE(i) > 0)
+                {
+                    SetGradientsE(i, orthoCutoff, gradient);
+                }
             }
         }
         public void ComputeGradientA(ref double[] gradient)
@@ -487,23 +588,19 @@ namespace Krill
 
         private double Compute()
         {
-            double strainEnergy = 0.0;
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
+            double orthogonality = 0.0;
 
             for (int i = 0; i < nElements; i++)
             {
                 double ep = eps[i];
 
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor * E * areaFactor[i] * As[i] * ls[i] * ep * ep;
-
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += areaFactor[i] * areaFactor[i] * As[i] * As[i] * ls[i] * ep;
+                    reinforcement += areaFactor[i] * As[i] * ls[i] * SmoothingFunction(E * ep, smoothingFunctionScale);
                 }
 
                 // Utilization
@@ -517,11 +614,20 @@ namespace Krill
                 {
                     double stress = Esteel * ep;
                     double t = stress - fyd;
-                    penalty += t * t * stress * stress;
 
-                    //////////////
-                    //double t2 = Esteel * ep * As[i];
-                    //penalty += t2 * t2;
+                    if (useWfunction)
+                        penalty += t * t * stress * stress;
+                    else
+                    {
+                        if (t > 0)
+                            penalty += t * t;
+                    }
+                }
+
+                // Ortho
+                if (ep > 0)
+                {
+                    orthogonality += EvaluateElement(i, orthoCutoff);
                 }
             }
 
@@ -529,14 +635,10 @@ namespace Krill
             {
                 double ep = StrainE(i);
 
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor * E * AsE[i] * lsE[i] * ep * ep;
-
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += AsE[i] * AsE[i] * lsE[i] * ep;
+                    reinforcement += AsE[i] * lsE[i] * SmoothingFunction(E * ep, smoothingFunctionScale);
                 }
                 // Utilization
                 double cap = capacityReduction[ExtraElements[i].Item2];
@@ -548,18 +650,33 @@ namespace Krill
                 {
                     double stress = Esteel * ep;
                     double t = stress - fyd;
-                    penalty += t * t * stress * stress;
+
+                    if (useWfunction)
+                        penalty += t * t * stress * stress;
+                    else
+                    {
+                        if (t > 0)
+                            penalty += t * t;
+                    }
+
+                }
+                if (ep > 0)
+                {
+                    orthogonality += EvaluateElementE(i, orthoCutoff);
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = 
+                reinforcement * reinforcmentFactor + 
+                utilization * utilizationFactor + 
+                penalty * penaltyFactor +
+                orthogonality * orthogonalityFactor;
 
             objectiveValue = result;
             return result;
         }
         private double ComputeDerivative(int dindex)
         {
-            double strainEnergy = 0.0;
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
@@ -585,19 +702,16 @@ namespace Krill
                 double deps = Dstrain(i, dindex, dl, dus);
                 double dA = dAs[i];
 
-
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor *
-                    areaFactor[i] * E * (2 * A * l * deps * ep + 
-                    (dA * l + A * dl) * ep * ep);
+                double smooth = SmoothingFunction(E * ep, smoothingFunctionScale);
+                double dsmooth = dSmoothingFunction(E * ep, smoothingFunctionScale) * E * deps;
 
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += areaFactor[i] * areaFactor[i] *
-                        (2 * ep * l * dA * A +
-                        (deps * l + ep * dl) * A * A);
+                    reinforcement += areaFactor[i] * (
+                        dA * l * smooth +
+                        A * dl * smooth +
+                        A * l * dsmooth);
                 }
 
                 // Utilization
@@ -620,8 +734,19 @@ namespace Krill
                 // Penalty
                 if (ep > 0)
                 {
-                    double stress = Esteel * ep;
-                    penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    if (useWfunction)
+                    {
+                        double stress = Esteel * ep;
+                        penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    }
+                    else
+                    {
+                        double t = ep * Esteel - fyd;
+                        if (t > 0)
+                        {
+                            penalty += 2 * t * deps * Esteel;
+                        }
+                    }
                 }
             }
 
@@ -635,19 +760,16 @@ namespace Krill
                 double dA = 0; // E * A * deps / fyd;
                 double deps = DstrainE(i, dindex, dl, dus, dA);
 
-
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy -= factor *
-                    E * (2 * A * l * deps * ep +
-                    (dA * l + A * dl) * ep * ep);
+                double smooth = SmoothingFunction(E * ep, smoothingFunctionScale);
+                double dsmooth = dSmoothingFunction(E * ep, smoothingFunctionScale) * E * deps;
 
                 // Reinforcement
                 if (ep > 0)
                 {
                     reinforcement += 
-                        (2 * ep * l * dA * A +
-                        (deps * l + ep * dl) * A * A);
+                        dA * l * smooth + 
+                        A * dl * smooth +
+                        A * l * dsmooth;
                 }
 
                 // Utilization
@@ -659,18 +781,31 @@ namespace Krill
                 // Penalty
                 if (ep > 0)
                 {
-                    double stress = Esteel * ep;
-                    penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    if (useWfunction)
+                    {
+                        double stress = Esteel * ep;
+                        penalty += 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    }
+                    else
+                    {
+                        double t = ep * Esteel - fyd;
+                        if (t > 0)
+                        {
+                            penalty += 2 * t * deps * Esteel;
+                        }
+                    }
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = 
+                reinforcement * reinforcmentFactor + 
+                utilization * utilizationFactor + 
+                penalty * penaltyFactor;
 
             return result;
         }
         private double ComputeDerivativeA(int dindex)
         {
-            double strainEnergy = 0.0;
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
@@ -686,15 +821,15 @@ namespace Krill
                 double deps = DstrainA(i, dus);
                 double dfactor = i == dindex ? 1 : 0;
 
-                // Strain Energy
-                double factor = ep < 0 ? 1 : strainFactor;
-                strainEnergy += factor *
-                    E * A * l * ep * (ep * dfactor + 2 * areaFactor[i] * deps);
+                double smooth = SmoothingFunction(E * ep, smoothingFunctionScale);
+                double dsmooth = dSmoothingFunction(E * ep, smoothingFunctionScale) * E * deps;
 
                 // Reinforcement
                 if (ep > 0)
                 {
-                    reinforcement += l * A * A * areaFactor[i] * (2 * dfactor * ep + areaFactor[i] * deps);
+                    reinforcement +=
+                        dfactor * A * l * smooth +
+                        areaFactor[i] * A * l * dsmooth;
                 }
 
                 // Utilization
@@ -714,16 +849,83 @@ namespace Krill
                 // Penalty
                 if (ep > 0)
                 {
-                    double stress = Esteel * ep;
-                    penalty -= 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    if (useWfunction)
+                    {
+                        double stress = Esteel * ep;
+                        penalty -= 2 * deps * Esteel * stress * (stress - fyd) * (2 * stress - fyd);
+                    }
+                    else
+                    {
+                        double t = ep * Esteel - fyd;
+                        if (t > 0)
+                        {
+                            penalty += 2 * t * deps * Esteel;
+                        }
+                    }
                 }
             }
 
-            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = 
+                reinforcement * reinforcmentFactor + 
+                utilization * utilizationFactor + 
+                penalty * penaltyFactor;
 
             return -result * 0.01;
         }
 
+        double EvaluateElement(int eIndex, double cutoff)
+        {
+            var i = connections[eIndex].Item1 * 3;
+            var j = connections[eIndex].Item2 * 3;
+
+            double x = xs[j] - xs[i];
+            double y = xs[j + 1] - xs[i + 1];
+            double z = xs[j + 2] - xs[i + 2];
+            double norm = x * x + y * y + z * z;
+            //double l = Math.Sqrt(norm);
+
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                x = 0;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                y = 0;
+            }
+            else
+            {
+                z = 0;
+            }
+
+            return Math.Min(cutoff * cutoff * 0.4, (x * x + y * y + z * z) / norm);
+        }
+        double EvaluateElementE(int eIndex, double cutoff)
+        {
+            var el = ExtraElements[eIndex];
+            var point = el.Item1;
+            var j = el.Item2 * 3;
+
+            double x = xs[j] - point.X;
+            double y = xs[j + 1] - point.Y;
+            double z = xs[j + 2] - point.Z;
+            double norm = x * x + y * y + z * z;
+            //double l = Math.Sqrt(norm);
+
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                x = 0;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                y = 0;
+            }
+            else
+            {
+                z = 0;
+            }
+
+            return Math.Min(cutoff * cutoff * 0.4, (x * x + y * y + z * z) / norm);
+        }
         private double Area(int i)
         {
             // Use average area of the different nodes
@@ -752,7 +954,7 @@ namespace Krill
             double areaE = n.X * boxE.Y * boxE.Z + n.Y * boxE.X * boxE.Z + n.Z * boxE.X * boxE.Y;
 
             endAreas[i] = new Tuple<double, double>(areaS, areaE);
-            return (areaS + areaE) * 0.5;
+            return Math.Max((areaS + areaE) * 0.5, 0.0);
         }
 
         private double dArea(int i, int dindex)
@@ -1414,6 +1616,111 @@ namespace Krill
         {
             int i = vIndex - nIndex * 3;
             return i >= 0 && i < 3;
+        }
+        void SetGradients(int eIndex, double f, double[] dxs)
+        {
+            var i = connections[eIndex].Item1 * 3;
+            var j = connections[eIndex].Item2 * 3;
+
+            double x = xs[j] - xs[i];
+            double y = xs[j + 1] - xs[i + 1];
+            double z = xs[j + 2] - xs[i + 2];
+            double norm = x * x + y * y + z * z;
+            double l = Math.Sqrt(norm);
+            double sqnorm = 1 / (norm * l);
+            double rx = 0;
+            double ry = 0;
+            double rz = 0;
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                rx = -2 * x * (y * y + z * z) * sqnorm;
+                ry = 2 * x * x * y * sqnorm;
+                rz = 2 * x * x * z * sqnorm;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                rx = 2 * y * y * x * sqnorm;
+                ry = -2 * y * (x * x + z * z) * sqnorm;
+                rz = 2 * y * y * z * sqnorm;
+            }
+            else
+            {
+                rx = 2 * z * z * x * sqnorm;
+                ry = 2 * z * z * y * sqnorm;
+                rz = -2 * z * (x * x + y * y) * sqnorm;
+            }
+            SmoothConstrain(ref rx, ref ry, ref rz, f);
+            dxs[i] += lockedDOF[i] ? 0 : orthogonalityFactor * rx / (l * 2);
+            dxs[i + 1] += lockedDOF[i + 1] ? 0 : orthogonalityFactor * ry / (l * 2);
+            dxs[i + 2] += lockedDOF[i + 2] ? 0 : orthogonalityFactor * rz / (l * 2);
+            dxs[j] -= lockedDOF[j] ? 0 : orthogonalityFactor * rx / (l * 2);
+            dxs[j + 1] -= lockedDOF[j + 1] ? 0 : orthogonalityFactor * ry / (l * 2);
+            dxs[j + 2] -= lockedDOF[j + 2] ? 0 : orthogonalityFactor * rz / (l * 2);
+        }
+        void SetGradientsE(int eIndex, double f, double[] dxs)
+        {
+            var el = ExtraElements[eIndex];
+            var point = el.Item1;
+            var j = connections[eIndex].Item2 * 3;
+
+            double x = xs[j] - point.X;
+            double y = xs[j + 1] - point.Y;
+            double z = xs[j + 2] - point.Z;
+            double norm = x * x + y * y + z * z;
+            double l = Math.Sqrt(norm);
+            double sqnorm = 1 / (norm * l);
+            double rx = 0;
+            double ry = 0;
+            double rz = 0;
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                rx = -2 * x * (y * y + z * z) * sqnorm;
+                ry = 2 * x * x * y * sqnorm;
+                rz = 2 * x * x * z * sqnorm;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                rx = 2 * y * y * x * sqnorm;
+                ry = -2 * y * (x * x + z * z) * sqnorm;
+                rz = 2 * y * y * z * sqnorm;
+            }
+            else
+            {
+                rx = 2 * z * z * x * sqnorm;
+                ry = 2 * z * z * y * sqnorm;
+                rz = -2 * z * (x * x + y * y) * sqnorm;
+            }
+            SmoothConstrain(ref rx, ref ry, ref rz, f);
+            dxs[j] -= lockedDOF[j] ? 0 : orthogonalityFactor * rx / (l * 2);
+            dxs[j + 1] -= lockedDOF[j + 1] ? 0 : orthogonalityFactor * ry / (l * 2);
+            dxs[j + 2] -= lockedDOF[j + 2] ? 0 : orthogonalityFactor * rz / (l * 2);
+        }
+        void SmoothConstrain(ref double x, ref double y, ref double z, double f)
+        {
+            const double lower = 0.01;
+            const double fade = 0.15;
+            double sqL = x * x + y * y + z * z;
+            double lf = f - fade;
+            double uf = f + fade;
+            if (sqL < lf * lf)
+            {
+            }
+            else if (sqL < uf * uf)
+            {
+                double l = Math.Sqrt(sqL);
+                double t = (l - lf) / (2 * fade);
+                double newLength = (t * lower + (1 - t) * (f - fade));
+                x *= newLength / l;
+                y *= newLength / l;
+                z *= newLength / l;
+            }
+            else
+            {
+                double l = Math.Sqrt(sqL);
+                x *= lower / l;
+                y *= lower / l;
+                z *= lower / l;
+            }
         }
     }
 }

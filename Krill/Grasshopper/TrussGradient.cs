@@ -68,6 +68,7 @@ namespace Krill.Grasshopper
 
             double a = 1;
             DA.GetData(4, ref a);
+            double firstA = a;
 
             bool lockZ = false;
             DA.GetData(5, ref lockZ);
@@ -116,6 +117,7 @@ namespace Krill.Grasshopper
             var gradient = new double[energyTruss.nVariables];
             var gradientA = new double[energyTruss.nElements];
             double energy = energyTruss.ComputeValue();
+            double intermidiateEnergy = double.MaxValue;
             double gamma = 1;
             double stepLength = double.MaxValue;
             if (energyTruss.mechanisim || double.IsNaN(energy))
@@ -123,25 +125,55 @@ namespace Krill.Grasshopper
                 AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "The truss is an Mechanism and can not be solved. \n Occurred at iteration: 0");
                 energy = double.NaN;
             }
-            for (int i = 0; i < n; i++)
+            int iter = 0;
+            energyTruss.SetPenalties(5);
+            for (int penIter = 0; penIter < 8; penIter++)
             {
-                if (energyTruss.mechanisim || double.IsNaN(energy))
+                intermidiateEnergy = double.MaxValue;
+                while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
                 {
-                    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {i}");
-                    energy = double.NaN;
-                    break;
+                    a = firstA;
+                    // Node Locations
+                    for (; iter < n; iter++)
+                    {
+                        //if (energyTruss.mechanisim || double.IsNaN(energy))
+                        //{
+                        //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                        //    energy = double.NaN;
+                        //    break;
+                        //}
+
+                        energyTruss.ComputeGradient(ref gradient);
+                        energyTruss.ConstrainGradient(gradient);
+                        energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
+                        // Steplength is the square distance moved ish (as if everything is thought of as one vector)
+                        if (stepLength < 1e-16)
+                            break;
+
+                    }
+                    intermidiateEnergy = energy;
+                    a = firstA;
+                    // Element size
+                    for (; iter < n; iter++)
+                    {
+                        //if (energyTruss.mechanisim || double.IsNaN(energy))
+                        //{
+                        //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                        //    energy = double.NaN;
+                        //    break;
+                        //}
+
+                        energyTruss.ComputeGradientA(ref gradientA);
+                        energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
+                        // Steplength is the square distance moved ish (as if everything is thought of as one vector)
+                        if (stepLength < 1e-16)
+                            break;
+
+                    }
                 }
-
-                energyTruss.ComputeGradient(ref gradient);
-                energyTruss.ConstrainGradient(gradient);
-                energyTruss.ComputeGradientA(ref gradientA);
-                energyTruss.ConstrainGradientA(gradientA);
-                energy = energyTruss.ArmijoStep(gradient, gradientA, ref a, out stepLength, gamma);
-                // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                if (stepLength < 1e-16)
-                    break;
-
-                //energyTruss.penaltyFactor *= 2;
+                energyTruss.ModifyPenalties(4);
+                energyTruss.SetData(null);
+                energy = energyTruss.ComputeValue();
             }
 
             // Post processing
