@@ -132,7 +132,6 @@ namespace Krill
 
             double initialValue = objectiveValue;
             double dot = Vector.DotProduct(nVariables, gradient, realGradient);
-            dot += Vector.DotProduct(nElements, gradientA, realGradientA);
 
             double newValue, expectedValue;
             a *= 2.2;
@@ -454,6 +453,9 @@ namespace Krill
 
         public double penaltyFactor = 1;
 
+        double orthogonalityFactor = 1;
+        double orthoCutoff = 1;
+
         public void ComputeGradient(ref double[] gradient)
         {
             if (nVariables == nlockedDOF)
@@ -466,6 +468,21 @@ namespace Krill
             {
                 if (!fixedVariable[i])
                     gradient[i] = -ComputeDerivative(i);
+            }
+
+            for (int i = 0; i < nElements; i++)
+            {
+                if (eps[i] > 0)
+                {
+                    SetGradients(i, orthoCutoff, gradient);
+                }
+            }
+            for (int i = 0; i < nExtraElements; i++)
+            {
+                if (StrainE(i) > 0)
+                {
+                    SetGradientsE(i, orthoCutoff, gradient);
+                }
             }
         }
         public void ComputeGradientA(ref double[] gradient)
@@ -532,6 +549,7 @@ namespace Krill
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
+            double orthogonality = 0.0;
 
             for (int i = 0; i < nElements; i++)
             {
@@ -564,6 +582,11 @@ namespace Krill
                     //double t2 = Esteel * ep * As[i];
                     //penalty += t2 * t2;
                 }
+
+                if (ep > 0)
+                {
+                    orthogonality += EvaluateElement(i, orthoCutoff);
+                }
             }
 
             for (int i = 0; i < nExtraElements; i++)
@@ -591,9 +614,18 @@ namespace Krill
                     double t = stress - fyd;
                     penalty += t * t * stress * stress;
                 }
+                if (ep > 0)
+                {
+                    orthogonality += EvaluateElementE(i, orthoCutoff);
+                }
             }
 
-            double result = strainFactorMain * strainEnergy + reinforcement * reinforcmentFactor + utilization * utilizationFactor + penalty * penaltyFactor;
+            double result = 
+                strainFactorMain * strainEnergy + 
+                reinforcement * reinforcmentFactor + 
+                utilization * utilizationFactor + 
+                penalty * penaltyFactor +
+                orthogonality * orthogonalityFactor;
 
             objectiveValue = result;
             return result;
@@ -765,6 +797,59 @@ namespace Krill
             return -result * 0.01;
         }
 
+        double EvaluateElement(int eIndex, double cutoff)
+        {
+            var i = connections[eIndex].Item1 * 3;
+            var j = connections[eIndex].Item2 * 3;
+
+            double x = xs[j] - xs[i];
+            double y = xs[j + 1] - xs[i + 1];
+            double z = xs[j + 2] - xs[i + 2];
+            double norm = x * x + y * y + z * z;
+            //double l = Math.Sqrt(norm);
+
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                x = 0;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                y = 0;
+            }
+            else
+            {
+                z = 0;
+            }
+
+            return Math.Min(cutoff * cutoff * 0.4, (x * x + y * y + z * z) / norm);
+        }
+        double EvaluateElementE(int eIndex, double cutoff)
+        {
+            var el = ExtraElements[eIndex];
+            var point = el.Item1;
+            var j = el.Item2 * 3;
+
+            double x = xs[j] - point.X;
+            double y = xs[j + 1] - point.Y;
+            double z = xs[j + 2] - point.Z;
+            double norm = x * x + y * y + z * z;
+            //double l = Math.Sqrt(norm);
+
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                x = 0;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                y = 0;
+            }
+            else
+            {
+                z = 0;
+            }
+
+            return Math.Min(cutoff * cutoff * 0.4, (x * x + y * y + z * z) / norm);
+        }
         private double Area(int i)
         {
             // Use average area of the different nodes
@@ -1455,6 +1540,111 @@ namespace Krill
         {
             int i = vIndex - nIndex * 3;
             return i >= 0 && i < 3;
+        }
+        void SetGradients(int eIndex, double f, double[] dxs)
+        {
+            var i = connections[eIndex].Item1 * 3;
+            var j = connections[eIndex].Item2 * 3;
+
+            double x = xs[j] - xs[i];
+            double y = xs[j + 1] - xs[i + 1];
+            double z = xs[j + 2] - xs[i + 2];
+            double norm = x * x + y * y + z * z;
+            double l = Math.Sqrt(norm);
+            double sqnorm = 1 / (norm * l);
+            double rx = 0;
+            double ry = 0;
+            double rz = 0;
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                rx = -2 * x * (y * y + z * z) * sqnorm;
+                ry = 2 * x * x * y * sqnorm;
+                rz = 2 * x * x * z * sqnorm;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                rx = 2 * y * y * x * sqnorm;
+                ry = -2 * y * (x * x + z * z) * sqnorm;
+                rz = 2 * y * y * z * sqnorm;
+            }
+            else
+            {
+                rx = 2 * z * z * x * sqnorm;
+                ry = 2 * z * z * y * sqnorm;
+                rz = -2 * z * (x * x + y * y) * sqnorm;
+            }
+            SmoothConstrain(ref rx, ref ry, ref rz, f);
+            dxs[i] += lockedDOF[i] ? 0 : orthogonalityFactor * rx / (l * 2);
+            dxs[i + 1] += lockedDOF[i + 1] ? 0 : orthogonalityFactor * ry / (l * 2);
+            dxs[i + 2] += lockedDOF[i + 2] ? 0 : orthogonalityFactor * rz / (l * 2);
+            dxs[j] -= lockedDOF[j] ? 0 : orthogonalityFactor * rx / (l * 2);
+            dxs[j + 1] -= lockedDOF[j + 1] ? 0 : orthogonalityFactor * ry / (l * 2);
+            dxs[j + 2] -= lockedDOF[j + 2] ? 0 : orthogonalityFactor * rz / (l * 2);
+        }
+        void SetGradientsE(int eIndex, double f, double[] dxs)
+        {
+            var el = ExtraElements[eIndex];
+            var point = el.Item1;
+            var j = connections[eIndex].Item2 * 3;
+
+            double x = xs[j] - point.X;
+            double y = xs[j + 1] - point.Y;
+            double z = xs[j + 2] - point.Z;
+            double norm = x * x + y * y + z * z;
+            double l = Math.Sqrt(norm);
+            double sqnorm = 1 / (norm * l);
+            double rx = 0;
+            double ry = 0;
+            double rz = 0;
+            if (Math.Abs(x) > Math.Abs(y) && Math.Abs(x) > Math.Abs(z))
+            {
+                rx = -2 * x * (y * y + z * z) * sqnorm;
+                ry = 2 * x * x * y * sqnorm;
+                rz = 2 * x * x * z * sqnorm;
+            }
+            else if (Math.Abs(y) > Math.Abs(z))
+            {
+                rx = 2 * y * y * x * sqnorm;
+                ry = -2 * y * (x * x + z * z) * sqnorm;
+                rz = 2 * y * y * z * sqnorm;
+            }
+            else
+            {
+                rx = 2 * z * z * x * sqnorm;
+                ry = 2 * z * z * y * sqnorm;
+                rz = -2 * z * (x * x + y * y) * sqnorm;
+            }
+            SmoothConstrain(ref rx, ref ry, ref rz, f);
+            dxs[j] -= lockedDOF[j] ? 0 : orthogonalityFactor * rx / (l * 2);
+            dxs[j + 1] -= lockedDOF[j + 1] ? 0 : orthogonalityFactor * ry / (l * 2);
+            dxs[j + 2] -= lockedDOF[j + 2] ? 0 : orthogonalityFactor * rz / (l * 2);
+        }
+        void SmoothConstrain(ref double x, ref double y, ref double z, double f)
+        {
+            const double lower = 0.01;
+            const double fade = 0.15;
+            double sqL = x * x + y * y + z * z;
+            double lf = f - fade;
+            double uf = f + fade;
+            if (sqL < lf * lf)
+            {
+            }
+            else if (sqL < uf * uf)
+            {
+                double l = Math.Sqrt(sqL);
+                double t = (l - lf) / (2 * fade);
+                double newLength = (t * lower + (1 - t) * (f - fade));
+                x *= newLength / l;
+                y *= newLength / l;
+                z *= newLength / l;
+            }
+            else
+            {
+                double l = Math.Sqrt(sqL);
+                x *= lower / l;
+                y *= lower / l;
+                z *= lower / l;
+            }
         }
     }
 }
