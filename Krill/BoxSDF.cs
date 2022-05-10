@@ -202,6 +202,8 @@ namespace Krill
         public Vector3d BoxValueAt(Point3d pt)
         {
             // Use lower bound and that the gradient is +-2
+            if (!SDF.InsideLerp(pt))
+                return Vector3d.Zero;
 
             pt -= (Vector3d)SDF.origin;
             pt /= SDF.delta;
