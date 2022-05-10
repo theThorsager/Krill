@@ -1102,6 +1102,7 @@ namespace Krill
             bool isstart = NodeConnectsToVariable(connections[i].Item1, dindex);
 
             var box = isstart ? boxS : boxE;
+            var boxO = !isstart ? boxS : boxE;
 
             var n = end - start;
             n.Unitize();
@@ -1163,17 +1164,19 @@ namespace Krill
             n.Z = Math.Abs(n.Z);
 
             double darea = dn.X * box.Y * box.Z + n.X * dbox.Y * box.Z + n.X * box.Y * dbox.Z +
-                           dn.Y * box.X * box.Z + n.Y * dbox.X * box.Z + n.Y * box.X * dbox.Z +
-                           dn.Z * box.X * box.Y + n.Z * dbox.X * box.Y + n.Z * box.X * dbox.Y;
+                            dn.Y * box.X * box.Z + n.Y * dbox.X * box.Z + n.Y * box.X * dbox.Z +
+                            dn.Z * box.X * box.Y + n.Z * dbox.X * box.Y + n.Z * box.X * dbox.Y;
+
+            double dareaOther = dn.X * boxO.Y * boxO.Z + dn.Y * boxO.X * boxO.Z + dn.Z * boxO.X * boxO.Y;
 
             if (isstart)
             {
                 dAs = darea;
-                dAe = 0;
+                dAe = dareaOther;
             }
             else
             {
-                dAs = 0;
+                dAs = dareaOther;
                 dAe = darea;
             }
         }
