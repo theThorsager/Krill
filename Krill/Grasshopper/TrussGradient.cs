@@ -127,13 +127,14 @@ namespace Krill.Grasshopper
             }
             int iter = 0;
             energyTruss.SetPenalties(5);
-            for (int penIter = 0; penIter < 8; penIter++)
+            for (int penIter = 0; penIter < 4; penIter++)
             {
                 intermidiateEnergy = double.MaxValue;
                 while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
                 {
                     a = firstA;
                     // Node Locations
+                    iter++;
                     for (; iter < n; iter++)
                     {
                         //if (energyTruss.mechanisim || double.IsNaN(energy))
@@ -144,16 +145,16 @@ namespace Krill.Grasshopper
                         //}
 
                         energyTruss.ComputeGradient(ref gradient);
-                        energyTruss.ConstrainGradient(gradient);
                         energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
                         // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                        if (stepLength < 1e-16)
+                        if (stepLength < energyTruss.stepTol)
                             break;
 
                     }
                     intermidiateEnergy = energy;
                     a = firstA;
                     // Element size
+                    iter++;
                     for (; iter < n; iter++)
                     {
                         //if (energyTruss.mechanisim || double.IsNaN(energy))
@@ -166,12 +167,15 @@ namespace Krill.Grasshopper
                         energyTruss.ComputeGradientA(ref gradientA);
                         energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
                         // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                        if (stepLength < 1e-16)
+                        if (stepLength < energyTruss.stepTol)
                             break;
 
                     }
                 }
-                energyTruss.ModifyPenalties(4);
+                if (iter >= n)
+                    break;
+
+                energyTruss.ModifyPenalties(2);
                 energyTruss.SetData(null);
                 energy = energyTruss.ComputeValue();
             }

@@ -89,6 +89,22 @@ namespace Krill
             return result;
         }
 
+        public bool Inside(Point3d pt)
+        {
+            var max = (pt - origin);
+            return max.X < n * delta && max.X > 0 &&
+                   max.Y < n * delta && max.Y > 0 &&
+                   max.Z < n * delta && max.Z > 0;
+        }
+        public bool InsideLerp(Point3d pt)
+        {
+            var max = (pt - origin);
+            double half = delta * 0.5;
+            return max.X < n * delta - half && max.X > half &&
+                   max.Y < n * delta - half && max.Y > half &&
+                   max.Z < n * delta - half && max.Z > half;
+        }
+
         public Point3d IndexToPoint(int i, int j, int k)
         {
             return new Point3d(origin.X + delta * i, origin.Y + delta * j, origin.Z + delta * k);

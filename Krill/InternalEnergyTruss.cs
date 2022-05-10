@@ -126,12 +126,15 @@ namespace Krill
             SetNeighbourList();
         }
 
+        public double stepTol = 1e-4;
         public double ArmijoStep(double[] gradient, ref double a, out double stepLength, double gamma)
         {
             double c1 = 0.001;
 
             double initialValue = objectiveValue;
             double dot = Vector.DotProduct(nVariables, gradient, realGradient);
+            double sqdot = Math.Sqrt(dot);
+            double manhattan = gradient.Sum(x => Math.Abs(x));
 
             double newValue, expectedValue;
             a *= 2.2;
@@ -146,9 +149,17 @@ namespace Krill
 
                 expectedValue = initialValue - c1 * a * dot;
 
-                stepLength = a * dot;
+                stepLength = a * manhattan;
 
-            } while (newValue > expectedValue && stepLength > 1e-16);
+            } while (newValue > expectedValue && stepLength > stepTol);
+            if (stepLength <= stepTol)
+            {
+                this.ApplyGradient(gradient, -a);
+                this.SetData(null);
+                lastA = a;
+                newValue = ComputeValue();
+            }
+
 
             return newValue;
         }
@@ -159,6 +170,8 @@ namespace Krill
 
             double initialValue = objectiveValue;
             double dot = Vector.DotProduct(nElements, gradientA, gradientA);
+            double sqdot = Math.Sqrt(dot);
+            double manhattan = gradientA.Sum(x => Math.Abs(x));
 
             double newValue, expectedValue;
             a *= 2.2;
@@ -173,9 +186,16 @@ namespace Krill
 
                 expectedValue = initialValue - c1 * a * dot;
 
-                stepLength = a * dot;
+                stepLength = a * manhattan;
 
-            } while (newValue > expectedValue && stepLength > 1e-16);
+            } while (newValue > expectedValue && stepLength > stepTol);
+            if (stepLength <= stepTol)
+            {
+                this.ApplyGradientA(gradientA, -a);
+                this.SetData(null);
+                lastA = a;
+                newValue = ComputeValue();
+            }
 
             return newValue;
         }
@@ -527,6 +547,8 @@ namespace Krill
                     SetGradientsE(i, orthoCutoff, gradient);
                 }
             }
+
+            ConstrainGradient(gradient);
         }
         public void ComputeGradientA(ref double[] gradient)
         {
