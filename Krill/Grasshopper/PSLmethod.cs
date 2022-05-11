@@ -64,6 +64,8 @@ namespace Krill.Grasshopper
             pManager.AddCurveParameter("PhaseIICrvs", "IIcrvs", "", GH_ParamAccess.list);
             pManager.AddCurveParameter("PhaseIIICrvs", "IIIcrvs", "", GH_ParamAccess.list);
             pManager.AddLineParameter("InitialTruss", "truss", "", GH_ParamAccess.list);
+            pManager.AddLineParameter("SupportLines", "dLines", "", GH_ParamAccess.list);
+            pManager.AddLineParameter("LoadLines", "nLines", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -110,6 +112,8 @@ namespace Krill.Grasshopper
         List<Polyline> phaseIIcrvs { get; set; } = null;
         List<Polyline> phaseIIIcrvs { get; set; } = null;
         List<Line> truss { get; set; } = null;
+        List<Line> dLines { get; set; } = null;
+        List<Line> nLines { get; set; } = null;
 
         public PSLWorker() : base(null)
         { }
@@ -127,6 +131,8 @@ namespace Krill.Grasshopper
             phaseIIcrvs = new List<Polyline>();
             phaseIIIcrvs = new List<Polyline>();
             truss = new List<Line>();
+            dLines = new List<Line>();
+            nLines = new List<Line>();
 
             PSL psl = new PSL(post, BCs, startPoints, scaleDelta, tol, offsetTol, intTol);
 
@@ -163,8 +169,9 @@ namespace Krill.Grasshopper
                 phaseIIIcrvs.Add(psl.pIIIcrvs[i]);
 
             truss.AddRange(psl.truss);
-            truss.AddRange(psl.loadLines);
-            truss.AddRange(psl.supportLines);
+            dLines.AddRange(psl.supportLines);
+            nLines.AddRange(psl.loadLines);
+            
 
             if (CancellationToken.IsCancellationRequested)
                 return;
@@ -223,7 +230,12 @@ namespace Krill.Grasshopper
             if (!(phaseIIIcrvs is null))
                 DA.SetDataList(3, phaseIIIcrvs);
             if (!(truss is null))
-                DA.SetDataList (4, truss);
+                DA.SetDataList(4, truss);
+            if (!(dLines is null))
+                DA.SetDataList(5, dLines);
+            if (!(nLines is null))
+                DA.SetDataList(6, nLines);
+
         }
     }
 }
