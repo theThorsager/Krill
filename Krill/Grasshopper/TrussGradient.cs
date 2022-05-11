@@ -115,22 +115,20 @@ namespace Krill.Grasshopper
 
             var log = new List<string>();
 
-            energyTruss.SetData(null);
             var gradient = new double[energyTruss.nVariables];
             var gradientA = new double[energyTruss.nElements];
-            double energy = energyTruss.ComputeValue();
             double intermidiateEnergy = double.MaxValue;
             double gamma = 1;
             double stepLength = double.MaxValue;
-            if (energyTruss.mechanisim || double.IsNaN(energy))
-            {
-                AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, "The truss is an Mechanism and can not be solved. \n Occurred at iteration: 0");
-                energy = double.NaN;
-            }
+            double energy = double.MaxValue;
+            
             int iter = 0;
             for (int stmIter = 0; stmIter < 10; stmIter++)
             {
                 energyTruss.SetPenalties(5);
+                energyTruss.SetData(null);
+                energy = energyTruss.ComputeValue();
+
                 for (int penIter = 0; penIter < 10; penIter++)
                 {
                     intermidiateEnergy = double.MaxValue;
@@ -188,12 +186,15 @@ namespace Krill.Grasshopper
                     energy = energyTruss.ComputeValue();
                 }
 
-                log.Add($"////// STM modification //////");
-                energyTruss.ApplySTMConstraintsHueristic();
-                intermidiateEnergy = energy;
-                energy = energyTruss.ComputeValue();
-                if (Math.Abs(intermidiateEnergy - energy) < 1e-6)
-                    break;
+                if (iter < n)
+                {
+                    log.Add($"////// STM modification //////");
+                    energyTruss.ApplySTMConstraintsHueristic();
+                    intermidiateEnergy = energy;
+                    energy = energyTruss.ComputeValue();
+                    if (Math.Abs(intermidiateEnergy - energy) < 1e-6)
+                        break;
+                }
             }
             // Post processing
             var displac = energyTruss.us;
