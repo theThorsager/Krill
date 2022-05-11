@@ -137,6 +137,7 @@ namespace Krill.Grasshopper
                         a = firstA;
                         // Node Locations
                         iter++;
+                        int innnerIter = 0;
                         for (; iter < n; iter++)
                         {
                             //if (energyTruss.mechanisim || double.IsNaN(energy))
@@ -148,16 +149,20 @@ namespace Krill.Grasshopper
 
                             energyTruss.ComputeGradient(ref gradient);
                             energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
-                            log.Add($"location iteration: {iter} Steplength: {stepLength}");
+                            log.Add($"location iteration: {iter} Steplength: {stepLength} Energy: {energy}");
                             // Steplength is the square distance moved ish (as if everything is thought of as one vector)
                             if (stepLength < energyTruss.stepTol)
                                 break;
 
+                            innnerIter++;
+                            if (innnerIter >= 100)
+                                break;
                         }
                         intermidiateEnergy = energy;
                         a = firstA;
                         // Element size
                         iter++;
+                        innnerIter = 0;
                         for (; iter < n; iter++)
                         {
                             //if (energyTruss.mechanisim || double.IsNaN(energy))
@@ -169,29 +174,32 @@ namespace Krill.Grasshopper
 
                             energyTruss.ComputeGradientA(ref gradientA);
                             energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
-                            log.Add($"area iteration: {iter} Steplength: {stepLength}");
+                            log.Add($"area iteration: {iter} Steplength: {stepLength} Energy: {energy}");
                             // Steplength is the square distance moved ish (as if everything is thought of as one vector)
                             if (stepLength < energyTruss.stepTol)
                                 break;
 
+                            innnerIter++;
+                            if (innnerIter >= 100)
+                                break;
                         }
                     }
                     if (iter >= n)
                         break;
 
-                    log.Add($"----- penalty modification -----");
 
                     energyTruss.ModifyPenalties(2);
                     energyTruss.SetData(null);
                     energy = energyTruss.ComputeValue();
+                    log.Add($"----- penalty modification -----  Energy: {energy}");
                 }
 
                 if (iter < n)
                 {
-                    log.Add($"////// STM modification //////");
                     energyTruss.ApplySTMConstraintsHueristic();
                     intermidiateEnergy = energy;
                     energy = energyTruss.ComputeValue();
+                    log.Add($"////// STM modification ////// Energy: {energy}");
                     if (Math.Abs(intermidiateEnergy - energy) < 1e-6)
                         break;
                 }
