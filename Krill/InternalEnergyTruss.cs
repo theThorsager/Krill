@@ -63,6 +63,13 @@ namespace Krill
 
         double[] minimumEnforcedAreas = null;
 
+        // function values
+        double reinforcement = 0.0;
+        double utilizationStruts = 0.0;
+        double utilizationTies = 0.0;
+        double orthogonality = 0.0;
+        double enforcedArea = 0.0;
+
         public List<double> Forces()
         {
             return eps.Zip(Areas(), (e, a) => e * a * E).ToList();
@@ -621,11 +628,11 @@ namespace Krill
 
         private double Compute()
         {
-            double reinforcement = 0.0;
-            double utilization = 0.0;
-            double penalty = 0.0;
-            double orthogonality = 0.0;
-            double enforcedArea = 0.0;
+            reinforcement = 0.0;
+            utilizationStruts = 0.0;
+            utilizationTies = 0.0;
+            orthogonality = 0.0;
+            enforcedArea = 0.0;
 
             for (int i = 0; i < nElements; i++)
             {
@@ -640,8 +647,8 @@ namespace Krill
                 // Utilization
                 double sigma = E * As[i] * ep;
                 Func<double, double> Square = x => x * x;
-                utilization -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1])));
-                utilization -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2])));
+                utilizationStruts -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1])));
+                utilizationStruts -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2])));
 
                 // Penalty
                 if (ep > 0)
@@ -650,11 +657,11 @@ namespace Krill
                     double t = stress - fyd;
 
                     if (useWfunction)
-                        penalty += t * t * stress * stress;
+                        utilizationTies += t * t * stress * stress;
                     else
                     {
                         if (t > 0)
-                            penalty += t * t;
+                            utilizationTies += t * t;
                     }
                 }
 
@@ -685,7 +692,7 @@ namespace Krill
                 // Utilization
                 double cap = capacityReduction[ExtraElements[i].Item2];
 
-                utilization -= Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap));
+                utilizationStruts -= Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap));
 
                 // Penalty
                 if (ep > 0)
@@ -694,11 +701,11 @@ namespace Krill
                     double t = stress - fyd;
 
                     if (useWfunction)
-                        penalty += t * t * stress * stress;
+                        utilizationTies += t * t * stress * stress;
                     else
                     {
                         if (t > 0)
-                            penalty += t * t;
+                            utilizationTies += t * t;
                     }
 
                 }
@@ -708,12 +715,18 @@ namespace Krill
                 }
             }
 
+            reinforcement *= reinforcmentFactor;
+            utilizationStruts *= utilizationFactor;
+            utilizationTies *= penaltyFactor;
+            orthogonality *= orthogonalityFactor;
+            enforcedArea *= enforcedAreaFactor;
+
             double result = 
-                reinforcement * reinforcmentFactor + 
-                utilization * utilizationFactor + 
-                penalty * penaltyFactor +
-                orthogonality * orthogonalityFactor + 
-                enforcedArea * enforcedAreaFactor;
+                reinforcement + 
+                utilizationStruts + 
+                utilizationTies +
+                orthogonality + 
+                enforcedArea;
 
             objectiveValue = result;
             return result;
