@@ -126,7 +126,7 @@ namespace Krill
             SetNeighbourList();
         }
 
-        public double stepTol = 1e-4;
+        public double stepTol = 1e-16;
         public double ArmijoStep(double[] gradient, ref double a, out double stepLength, double gamma)
         {
             double c1 = 0.001;
@@ -975,8 +975,17 @@ namespace Krill
             double areaS = n.X * boxS.Y * boxS.Z + n.Y * boxS.X * boxS.Z + n.Z * boxS.X * boxS.Y;
             double areaE = n.X * boxE.Y * boxE.Z + n.Y * boxE.X * boxE.Z + n.Z * boxE.X * boxE.Y;
 
-            endAreas[i] = new Tuple<double, double>(areaS, areaE);
-            return Math.Max((areaS + areaE) * 0.5, 0.0);
+            if (eps[i] > 0)
+            {
+                double area = Math.Min(areaS, areaE);
+                endAreas[i] = new Tuple<double, double>(area, area);
+                return Math.Max(area, 0.0);
+            }
+            else
+            {
+                endAreas[i] = new Tuple<double, double>(areaS, areaE);
+                return Math.Max((areaS + areaE) * 0.5, 0.0);
+            }
         }
 
         private double dArea(int i, int dindex)
@@ -1642,6 +1651,7 @@ namespace Krill
             int i = vIndex - nIndex * 3;
             return i >= 0 && i < 3;
         }
+        // Ortho
         void SetGradients(int eIndex, double f, double[] dxs)
         {
             var i = connections[eIndex].Item1 * 3;
@@ -1682,6 +1692,7 @@ namespace Krill
             dxs[j + 1] -= lockedDOF[j + 1] ? 0 : orthogonalityFactor * ry / (l * 2);
             dxs[j + 2] -= lockedDOF[j + 2] ? 0 : orthogonalityFactor * rz / (l * 2);
         }
+        // Ortho
         void SetGradientsE(int eIndex, double f, double[] dxs)
         {
             var el = ExtraElements[eIndex];
