@@ -61,6 +61,8 @@ namespace Krill
         public double[] capacityReduction = null;
         public List<int>[] neighbours = null;
 
+        double[] minimumEnforcedAreas = null;
+
         public List<double> Forces()
         {
             return eps.Zip(Areas(), (e, a) => e * a * E).ToList();
@@ -124,6 +126,8 @@ namespace Krill
             capacityReduction = Vector.Create(nVariables / 3, 1);
 
             SetNeighbourList();
+
+            minimumEnforcedAreas = new double[nElements];
         }
 
         public double stepTol = 1e-16;
@@ -438,6 +442,8 @@ namespace Krill
 
             // This isn't a real penalty only a cost function
             // orthogonalityFactor = factor;
+
+            enforcedAreaFactor = factor;
         }
         public void ModifyPenalties(double factor)
         {
@@ -448,6 +454,8 @@ namespace Krill
 
             // This isn't a real penalty only a cost function
             // orthogonalityFactor *= factor;
+
+            enforcedAreaFactor *= factor;
         }
 
         double SmoothingFunction(double x, double scale)
@@ -520,6 +528,8 @@ namespace Krill
         double orthoCutoff = 0.01;
 
         double smoothingFunctionScale = 0.05;
+
+        double enforcedAreaFactor = 1;
 
         public void ComputeGradient(ref double[] gradient)
         {
@@ -616,6 +626,7 @@ namespace Krill
             double utilization = 0.0;
             double penalty = 0.0;
             double orthogonality = 0.0;
+            double enforcedArea = 0.0;
 
             for (int i = 0; i < nElements; i++)
             {
@@ -653,6 +664,14 @@ namespace Krill
                 {
                     orthogonality += EvaluateElement(i, orthoCutoff);
                 }
+
+                // Area
+                double enArea = minimumEnforcedAreas[i] - As[i] * areaFactor[i];
+                if (enArea > 0)
+                {
+                    enforcedArea += enArea * enArea;
+                }
+
             }
 
             for (int i = 0; i < nExtraElements; i++)
@@ -694,7 +713,8 @@ namespace Krill
                 reinforcement * reinforcmentFactor + 
                 utilization * utilizationFactor + 
                 penalty * penaltyFactor +
-                orthogonality * orthogonalityFactor;
+                orthogonality * orthogonalityFactor + 
+                enforcedArea * enforcedAreaFactor;
 
             objectiveValue = result;
             return result;
@@ -704,6 +724,7 @@ namespace Krill
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
+            double enforcedArea = 0.0;
 
             for (int i = 0; i < nElements; i++)
             {
@@ -772,6 +793,13 @@ namespace Krill
                         }
                     }
                 }
+
+                // Area
+                double enArea = minimumEnforcedAreas[i] - A * areaFactor[i];
+                if (enArea > 0)
+                {
+                    enforcedArea += -2 * enArea * areaFactor[i] * dA;
+                }
             }
 
             for (int i = 0; i < nExtraElements; i++)
@@ -824,7 +852,8 @@ namespace Krill
             double result = 
                 reinforcement * reinforcmentFactor + 
                 utilization * utilizationFactor + 
-                penalty * penaltyFactor;
+                penalty * penaltyFactor + 
+                enforcedArea * enforcedAreaFactor;
 
             return result;
         }
@@ -833,6 +862,7 @@ namespace Krill
             double reinforcement = 0.0;
             double utilization = 0.0;
             double penalty = 0.0;
+            double enforcedArea = 0.0;
 
             double[] dus = DdisplacmentsA(dindex);
 
@@ -887,12 +917,20 @@ namespace Krill
                         }
                     }
                 }
+
+                // Area
+                double enArea = minimumEnforcedAreas[i] - A * areaFactor[i];
+                if (enArea > 0)
+                {
+                    enforcedArea += -2 * enArea * dfactor * A;
+                }
             }
 
             double result = 
                 reinforcement * reinforcmentFactor + 
                 utilization * utilizationFactor + 
-                penalty * penaltyFactor;
+                penalty * penaltyFactor + 
+                enforcedArea * enforcedAreaFactor;
 
             return -result * 1;
         }
@@ -1759,6 +1797,325 @@ namespace Krill
                 y *= lower / l;
                 z *= lower / l;
             }
+        }
+        // Set max area constraints
+
+        double MinimumArea(int i)
+        {
+            double ep = eps[i];
+            double A = As[i] * areaFactor[i];
+
+            double E = ep > 0 ? Esteel : this.E;
+
+            double F = ep * E * A;
+
+            double maxStress = ep > 0 ? fyd : -maxStressC * (1 - utilizationMargin);
+
+            return F / maxStress;
+        }
+
+        public bool ApplySTMConstraintsHueristic()
+        {
+            if (SDF is null)
+            {
+                // Could technically do some things, but...
+                return false;
+            }
+
+            bool problem = false;
+            // Find the least area each element needs to not break
+            // Assuming that the change in stiffness does not change the forces
+            var minimumAreas = new double[nElements];
+            for (int i = 0; i < nElements; i++)
+                minimumAreas[i] = MinimumArea(i);
+
+            // Compare against the available area computed properly
+            var currentAreas = As.Zip(areaFactor, (a, f) => a * f).ToArray();
+            problem |= FindRestOfArea(ref currentAreas);
+
+            // Find the smallest factor such that the first vector is fulfilled
+            double factor = 1;
+            for (int i = 0; i < nElements; i++)
+            {
+                double temp = minimumAreas[i] / currentAreas[i];
+                if (temp > factor)
+                    factor = temp;
+            }
+
+            if (factor == 1)
+                return false;
+
+            Vector.Scale(factor, currentAreas);
+
+            // Post processing FindRestOfArea to reduce the inevitable very large areas
+            problem |= FindRestOfArea(ref currentAreas);
+
+            // Place constraint on the first model that all elements areas need more than those areas
+            Vector.Copy(currentAreas, minimumEnforcedAreas);
+
+            return problem;
+        }
+
+
+        bool FindRestOfArea(ref double[] areas)
+        {
+            var boundingBoxes = new BoundingBox[nElements];
+
+            bool problem = false;
+            // Every node is an cuboid placed along the coordinate system
+            // the projection of the cuboid along each member should have the correct area
+            double[] oldAreas;
+            //do
+            //{
+            var nodeBBox = new Vector3d[nVariables / 3];
+            for (int i = 0; i < nVariables / 3; i++)
+                nodeBBox[i] = SDF.BoxValueAt(ToPoint(i));
+
+            bool[] areaChecked = new bool[nElements];
+            for (int iter = 0; iter < 1000; iter++)
+            {
+                problem = false;
+                oldAreas = areas.ToArray();
+
+                // find an element with an known area
+                for (int i = 0; i < areas.Length; i++)
+                {
+                    //if (areas[i] <= 1e-6)   // Change this check somehow :S 777777      77777777777
+                    //    continue;             // Everyones area is important, i.e. large areas don't matter anyway
+
+                    // check the nodes it connects to and update their areas
+                    Span<int> conn = new int[] { connections[i].Item1, connections[i].Item2 };
+
+                    for (int k = 0; k < 2; k++)
+                    {
+                        int index = conn[k];
+                        Point3d point = ToPoint(index);
+                        // Find all elements which connects to this node
+                        List<int> indices = neighbours[index];
+
+                        // Get relevant normals
+                        var normals = new List<Vector3d>();
+                        for (int j = 0; j < indices.Count; j++)
+                        {
+                            var con = connections[indices[j]];
+                            Vector3d normal = ToPoint(con.Item1) - ToPoint(con.Item2);
+                            normal.Unitize();
+                            normal.X = Math.Abs(normal.X);
+                            normal.Y = Math.Abs(normal.Y);
+                            normal.Z = Math.Abs(normal.Z);
+                            normals.Add(normal);
+                        }
+
+                        // find the cuboid that fits them all the best
+                        Vector3d bbox = GetBoundingBox(indices, normals, point, areas, nodeBBox[index]);
+                        nodeBBox[index] = bbox;
+
+                        boundingBoxes[index] = new BoundingBox(point - bbox * 0.5, point + 0.5 * bbox);
+
+                        // Update the areas
+                        for (int j = 0; j < indices.Count; j++)
+                        {
+                            Vector3d normal = normals[j];
+                            areas[indices[j]] = AreaFunction((Point3d)bbox, normal);
+                        }
+                    }
+                    if (true) //!areaChecked[i])
+                    {
+                        areaChecked[i] = true;  // Think this needs to know the node sizes, maybe do it every iteration and hope it evens out...
+                        problem |= FitElementArea(i, nodeBBox, areas);
+                    }
+                }
+
+                if (areas.Zip(oldAreas, (x, y) => Math.Abs(x - y) / x).All(x => x <= 1e-3))
+                    break;
+            }
+            //    // break if no area changed more than the tolerance
+            //} while (areas.Zip(oldAreas, (x, y) => Math.Abs(x - y)).Any(x => x > 1e-3));
+            return problem;
+        }
+
+        Point3d ToPoint(int index)
+        {
+            return new Point3d(
+                xs[3 * index + 0],
+                xs[3 * index + 1],
+                xs[3 * index + 2]);
+        }
+
+        Vector3d GetBoundingBox(List<int> indices, List<Vector3d> normals, Point3d node, double[] areas, Vector3d bigBox)
+        {
+            // find all areas not zero
+            var constraints = new List<Tuple<Vector3d, double>>();
+            for (int i = 0; i < indices.Count; i++)
+            {
+                double area = areas[indices[i]];
+                constraints.Add(new Tuple<Vector3d, double>(normals[i], area));
+            }
+
+            // Steepest ascent algorithm
+            double norm = Math.Min(constraints.Min(x => x.Item2), bigBox.MaximumCoordinate * bigBox.MaximumCoordinate);
+            double sqNorm = Math.Sqrt(norm);
+            Point3d pt = new Point3d(sqNorm, sqNorm, sqNorm);
+
+            for (int i = 0; i < 1000; i++)
+            {
+                var oldpt = pt;
+
+                Vector3d gradient = new Vector3d();
+
+                double temp = pt.Y * pt.Z + pt.X * (pt.Y + pt.Z);
+                gradient.X = pt.Y * pt.Y * pt.Z * pt.Z / (temp * temp);
+
+                temp = pt.X * pt.Z + pt.Y * (pt.X + pt.Z);
+                gradient.Y = pt.X * pt.X * pt.Z * pt.Z / (temp * temp);
+
+                temp = pt.Y * pt.X + pt.Z * (pt.Y + pt.X);
+                gradient.Z = pt.Y * pt.Y * pt.X * pt.X / (temp * temp);
+
+                // should probobly be scaled with smallest area
+                gradient.Unitize();
+                pt += 0.2 * sqNorm * gradient;// * (pt.X + pt.Y + pt.Z);
+                // Could consider making it always have a fairly fixed step length applied after the projection, there would be issues in making it stop however
+
+                // Project back into feasible space
+                pt.X = pt.X > bigBox.X ? bigBox.X : pt.X;
+                pt.Y = pt.Y > bigBox.Y ? bigBox.Y : pt.Y;
+                pt.Z = pt.Z > bigBox.Z ? bigBox.Z : pt.Z;
+
+                foreach (var constraint in constraints)
+                {
+                    var n = constraint.Item1;
+                    var a = constraint.Item2;
+
+                    if (AreaFunction(pt, n, a) > 0)
+                        pt = GradientProjection(pt, n, a);
+
+                }
+
+                // The step length should be evaluated, 
+
+                // And a break condition added
+                if (pt.DistanceToSquared(oldpt) < 1e-18)
+                    break;
+            }
+
+            return (Vector3d)pt;
+        }
+        double AreaFunction(Point3d pt, Vector3d normal, double area = 0)
+        {
+            return normal.X * pt.Y * pt.Z + normal.Y * pt.X * pt.Z + normal.Z * pt.Y * pt.X - area;
+        }
+        Point3d GradientProjection(Point3d pt, Vector3d normal, double area)
+        {
+            Vector3d gradient = new Vector3d(
+                normal.Y * pt.Z + normal.Z * pt.Y,
+                normal.X * pt.Z + normal.Z * pt.X,
+                normal.Y * pt.X + normal.X * pt.Y);
+
+            double a = normal.X * gradient.Y * gradient.Z +
+                       normal.Y * gradient.X * gradient.Z +
+                       normal.Z * gradient.Y * gradient.X;
+            double b = normal.Z * gradient.Y * pt.X +
+                       normal.Y * gradient.Z * pt.X +
+                       normal.Z * gradient.X * pt.Y +
+                       normal.X * gradient.Z * pt.Y +
+                       normal.X * gradient.Y * pt.Z +
+                       normal.Y * gradient.X * pt.Z;
+            double c = normal.Z * pt.X * pt.Y + normal.Y * pt.X * pt.Z + normal.X * pt.Y * pt.Z - area;
+
+            double t1 = (-b + Math.Sqrt(b * b - 4.0 * a * c)) / (2.0 * a);
+
+            return pt + gradient * t1;
+        }
+        bool FitElementArea(int i, Vector3d[] nodeBBox, double[] areas)
+        {
+            bool problem = false;
+            // Go through every element and step through their length such that the area fits
+
+            // check the nodes it connects to and update their areas
+            int a = connections[i].Item1;
+            int b = connections[i].Item2;
+            Point3d pt = ToPoint(a);
+            double area = areas[i];
+
+            // Get relevant normal
+            Vector3d normal = ToPoint(b) - pt;
+            Vector3d bboxA = nodeBBox[a];
+            Vector3d bboxB = nodeBBox[b];
+
+            double length = normal.Length;
+            normal.Unitize();
+            Vector3d realNormal = normal;
+            normal.X = Math.Abs(normal.X);
+            normal.Y = Math.Abs(normal.Y);
+            normal.Z = Math.Abs(normal.Z);
+
+            double sum = 0;
+            int counter = 0;
+            while (sum < length)
+            {
+                // Take the intersection between the max box at the point and the interpolated extreme boxes, this is to avoid too much shape distortion along the element
+                Vector3d bbox = SDF.BoxValueAt(pt);
+                //double t = StepLength(normal, bbox, area);
+
+                Vector3d lerpBox = BoxLERP(bboxA, bboxB, sum / length);
+                double t = StepLength(normal, bbox, lerpBox);
+                if (t < length * 1e-3)
+                {
+                    t = SDF.mask.delta * 0.5;
+                    if (sum + t > length)
+                        break;
+                    // See if we still fit our box here
+                    Vector3d tempBox = SDF.BoxValueAt(pt + realNormal * t);
+                    lerpBox = BoxLERP(bboxA, bboxB, (sum + t) / length);
+                    if (StepLength(normal, tempBox, lerpBox) < -length * 1e-3)
+                    {
+                        // Decrease area
+                        area = Math.Min(area, AreaFunction((Point3d)BoxIntersection(tempBox, lerpBox), normal));
+
+                        // would be nice to eventually send back some shape information to the nodes.
+                        // As it is now the nodes will only know that they need to decrease their area,
+                        // which means it won't do things like getting taller to get around a corner
+
+                        // Or give warning?
+                        problem |= true;
+                    }
+                }
+
+                sum += t;
+                pt += realNormal * t;
+
+                counter++;
+                if (counter > 1000)
+                    break;
+            }
+
+            areas[i] = area;
+            return problem;
+        }
+        Vector3d BoxLERP(Vector3d a, Vector3d b, double f)
+        {
+            return a * (1 - f) + b * f;
+        }
+
+        double StepLength(Vector3d n, Vector3d b0, Vector3d b1)
+        {
+            double t1 = (b0.X - b1.X) / (2.0 * n.X);
+            double t2 = (b0.Y - b1.Y) / (2.0 * n.Y);
+            double t3 = (b0.Z - b1.Z) / (2.0 * n.Z);
+
+            t1 = double.IsNaN(t1) ? double.PositiveInfinity : t1;
+            t2 = double.IsNaN(t2) ? double.PositiveInfinity : t2;
+            t3 = double.IsNaN(t3) ? double.PositiveInfinity : t3;
+
+            return Math.Min(Math.Min(t1, t2), t3);
+        }
+        Vector3d BoxIntersection(Vector3d b1, Vector3d b2)
+        {
+            return new Vector3d(
+                Math.Min(b1.X, b2.X),
+                Math.Min(b1.Y, b2.Y),
+                Math.Min(b1.Z, b2.Z));
         }
     }
 }

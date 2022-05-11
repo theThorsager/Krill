@@ -113,6 +113,8 @@ namespace Krill.Grasshopper
 
             energyTruss.BCPost();
 
+            var log = new List<string>();
+
             energyTruss.SetData(null);
             var gradient = new double[energyTruss.nVariables];
             var gradientA = new double[energyTruss.nElements];
@@ -126,60 +128,73 @@ namespace Krill.Grasshopper
                 energy = double.NaN;
             }
             int iter = 0;
-            energyTruss.SetPenalties(5);
-            for (int penIter = 0; penIter < 10; penIter++)
+            for (int stmIter = 0; stmIter < 10; stmIter++)
             {
-                intermidiateEnergy = double.MaxValue;
-                while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
+                energyTruss.SetPenalties(5);
+                for (int penIter = 0; penIter < 10; penIter++)
                 {
-                    a = firstA;
-                    // Node Locations
-                    iter++;
-                    for (; iter < n; iter++)
+                    intermidiateEnergy = double.MaxValue;
+                    while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
                     {
-                        //if (energyTruss.mechanisim || double.IsNaN(energy))
-                        //{
-                        //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
-                        //    energy = double.NaN;
-                        //    break;
-                        //}
+                        a = firstA;
+                        // Node Locations
+                        iter++;
+                        for (; iter < n; iter++)
+                        {
+                            //if (energyTruss.mechanisim || double.IsNaN(energy))
+                            //{
+                            //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                            //    energy = double.NaN;
+                            //    break;
+                            //}
 
-                        energyTruss.ComputeGradient(ref gradient);
-                        energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
-                        // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                        if (stepLength < energyTruss.stepTol)
-                            break;
+                            energyTruss.ComputeGradient(ref gradient);
+                            energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
+                            log.Add($"location iteration: {iter} Steplength: {stepLength}");
+                            // Steplength is the square distance moved ish (as if everything is thought of as one vector)
+                            if (stepLength < energyTruss.stepTol)
+                                break;
 
+                        }
+                        intermidiateEnergy = energy;
+                        a = firstA;
+                        // Element size
+                        iter++;
+                        for (; iter < n; iter++)
+                        {
+                            //if (energyTruss.mechanisim || double.IsNaN(energy))
+                            //{
+                            //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
+                            //    energy = double.NaN;
+                            //    break;
+                            //}
+
+                            energyTruss.ComputeGradientA(ref gradientA);
+                            energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
+                            log.Add($"area iteration: {iter} Steplength: {stepLength}");
+                            // Steplength is the square distance moved ish (as if everything is thought of as one vector)
+                            if (stepLength < energyTruss.stepTol)
+                                break;
+
+                        }
                     }
-                    intermidiateEnergy = energy;
-                    a = firstA;
-                    // Element size
-                    iter++;
-                    for (; iter < n; iter++)
-                    {
-                        //if (energyTruss.mechanisim || double.IsNaN(energy))
-                        //{
-                        //    AddRuntimeMessage(GH_RuntimeMessageLevel.Warning, $"The truss is an Mechanism and can not be solved. \n Occurred at iteration: {iter}");
-                        //    energy = double.NaN;
-                        //    break;
-                        //}
+                    if (iter >= n)
+                        break;
 
-                        energyTruss.ComputeGradientA(ref gradientA);
-                        energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
-                        // Steplength is the square distance moved ish (as if everything is thought of as one vector)
-                        if (stepLength < energyTruss.stepTol)
-                            break;
+                    log.Add($"----- penalty modification -----");
 
-                    }
+                    energyTruss.ModifyPenalties(2);
+                    energyTruss.SetData(null);
+                    energy = energyTruss.ComputeValue();
                 }
-                if (iter >= n)
-                    break;
 
-                energyTruss.ModifyPenalties(2);
-                energyTruss.SetData(null);
+                log.Add($"////// STM modification //////");
+                energyTruss.ApplySTMConstraintsHueristic();
+                intermidiateEnergy = energy;
                 energy = energyTruss.ComputeValue();
+                if (Math.Abs(intermidiateEnergy - energy) < 1e-6)
+                    break;
             }
-
             // Post processing
             var displac = energyTruss.us;
 
