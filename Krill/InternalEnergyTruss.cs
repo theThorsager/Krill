@@ -158,6 +158,7 @@ namespace Krill
                 this.SetData(null);
                 lastA = a;
                 newValue = ComputeValue();
+                stepLength = 0;
             }
 
 
@@ -195,6 +196,7 @@ namespace Krill
                 this.SetData(null);
                 lastA = a;
                 newValue = ComputeValue();
+                stepLength = 0;
             }
 
             return newValue;
@@ -432,7 +434,7 @@ namespace Krill
             utilizationFactor = factor;
             penaltyFactor = factor;
 
-            smoothingFunctionScale = 0.05;
+            smoothingFunctionScale = 0.01;
 
             // This isn't a real penalty only a cost function
             // orthogonalityFactor = factor;
@@ -442,7 +444,7 @@ namespace Krill
             utilizationFactor *= factor;
             penaltyFactor *= factor;
 
-            smoothingFunctionScale /= factor;
+            smoothingFunctionScale /= factor * 2;
 
             // This isn't a real penalty only a cost function
             // orthogonalityFactor *= factor;
@@ -488,9 +490,9 @@ namespace Krill
             us = Displacments();
 
             double maxlength = ls.Max();
-            if (us.Any(x => Math.Abs(x) > maxlength))
+            if (mechanisim || us.Any(x => Math.Abs(x) > maxlength))
             {
-                this.mechanisim = true;
+                this.mechanisim = false;
                 return double.MaxValue;
             }
 
@@ -892,7 +894,7 @@ namespace Krill
                 utilization * utilizationFactor + 
                 penalty * penaltyFactor;
 
-            return -result * 0.01;
+            return -result * 1;
         }
 
         double EvaluateElement(int eIndex, double cutoff)

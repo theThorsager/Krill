@@ -127,7 +127,7 @@ namespace Krill.Grasshopper
             }
             int iter = 0;
             energyTruss.SetPenalties(5);
-            for (int penIter = 0; penIter < 4; penIter++)
+            for (int penIter = 0; penIter < 10; penIter++)
             {
                 intermidiateEnergy = double.MaxValue;
                 while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
