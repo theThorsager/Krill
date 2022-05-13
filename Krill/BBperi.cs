@@ -728,7 +728,9 @@ namespace Krill
                 {
                     count++;
 
-                    localLoadFactor = localLoad * localLoadFactor.Length;
+                    double volumeFactor = (double)(nlist.Length * 2.0 + 1.0) / (double)(startVoxels.cellValues[i] >> 20);
+
+                    localLoadFactor = localLoad * localLoadFactor.Length * volumeFactor;
 
                     loads.Add(localLoadFactor);
                     indices.Add(i);
@@ -745,9 +747,7 @@ namespace Krill
             {
                 int i = indices[ii];
 
-                double volumeFactor = (double)(nlist.Length * 2.0 + 1.0) / (double)(startVoxels.cellValues[i] >> 20);
-
-                bodyload.cellValues[i] += loads[ii] * factor * volumeFactor;
+                bodyload.cellValues[i] += loads[ii] * factor;
             }
         }
 
