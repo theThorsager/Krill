@@ -102,7 +102,6 @@ namespace Krill
             xs = truss.Nodes.SelectMany(x => new double[] { x.X, x.Y, x.Z }).ToArray();
             connections = truss.Connections.ToArray();
 
-            As = truss.Areas.ToArray();
 
             nVariables = xs.Length;
             nElements = connections.Length;
@@ -147,7 +146,10 @@ namespace Krill
 
             realGradient = new double[nVariables];
             realGradientA = new double[nElements];
-            areaFactor = Vector.Create(nElements, 1.0);
+            As = truss.Areas.ToArray();
+            areaFactor = As.ToArray();
+
+            //areaFactor = Vector.Create(nElements, 1.0);
 
             endAreas = new Tuple<double, double>[nElements];
             capacityReduction = Vector.Create(nVariables / 3, 1);
@@ -189,6 +191,8 @@ namespace Krill
                 this.ApplyGradient(gradient, -a);
                 this.SetData(null);
                 newValue = ComputeValue();
+                this.SetData(null);
+                newValue = ComputeValue();
                 stepLength = 0;
             }
 
@@ -225,6 +229,8 @@ namespace Krill
             if (stepLength <= stepTol)
             {
                 this.ApplyGradientA(gradientA, oldAreaFactor, 0);
+                this.SetData(null);
+                newValue = ComputeValue();
                 this.SetData(null);
                 newValue = ComputeValue();
                 stepLength = 0;
@@ -466,7 +472,7 @@ namespace Krill
             utilizationFactor = factor;
             penaltyFactor = factor;
 
-            smoothingFunctionScale = 1e-6;
+            smoothingFunctionScale = 1e-4;
 
             // This isn't a real penalty only a cost function
             // orthogonalityFactor = factor;
@@ -1074,7 +1080,7 @@ namespace Krill
 
             if (eps[i] > 0)
             {
-                double area = Math.Min(areaS, areaE);
+                double area = (areaS + areaE) * 0.5;
                 endAreas[i] = new Tuple<double, double>(area, area);
                 return Math.Max(area, 0.0);
             }

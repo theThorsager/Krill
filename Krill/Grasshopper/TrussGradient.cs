@@ -142,7 +142,7 @@ namespace Krill.Grasshopper
             int iter = 0;
             for (int stmIter = 0; stmIter < 10; stmIter++)
             {
-                energyTruss.SetPenalties(10);
+                energyTruss.SetPenalties(1);
                 energyTruss.SetData(null);
                 energy = energyTruss.ComputeValue();
 
