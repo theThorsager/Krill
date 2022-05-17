@@ -213,7 +213,7 @@ namespace Krill.Grasshopper
                         break;
 
 
-                    energyTruss.ModifyPenalties(10);
+                    energyTruss.ModifyPenalties(2);
                     energyTruss.SetData(null);
                     energy = energyTruss.ComputeValue();
                     log.Add($"----- penalty modification -----  Energy: {energy}");
