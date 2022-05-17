@@ -31,6 +31,7 @@ namespace Krill
         double E;
         double Esteel;
         double fyd;
+        double maxStressC;
 
         SparseLDL LDL = null;
 
@@ -70,6 +71,19 @@ namespace Krill
         double orthogonality = 0.0;
         double enforcedArea = 0.0;
 
+        public double[] functionVals()
+        {
+            double[] vals = new double[5]
+            {
+                reinforcement,
+                utilizationStruts,
+                utilizationTies,
+                orthogonality,
+                enforcedArea
+            };
+            return vals;
+        }
+
         public List<double> Forces()
         {
             return eps.Zip(Areas(), (e, a) => e * a * E).ToList();
@@ -83,7 +97,7 @@ namespace Krill
         public InternalEnergyTruss()
         { }
 
-        public void Init(Containers.TrussGeometry truss, double fyd = 1, double E = 1)
+        public void Init(Containers.TrussGeometry truss, Containers.SettingsSTM settingsSTM)
         {
             xs = truss.Nodes.SelectMany(x => new double[] { x.X, x.Y, x.Z }).ToArray();
             connections = truss.Connections.ToArray();
@@ -95,9 +109,15 @@ namespace Krill
 
             f = new double[nVariables];
 
-            this.fyd = fyd*0.6;
-            this.E = E;
-            this.Esteel = E * 5;    // Double check
+            //this.fyd = fyd*0.6;
+            //this.E = E;
+            //this.Esteel = E * 5;    // Double check
+
+            E = settingsSTM.Ec;
+            Esteel = settingsSTM.Es;
+            fyd = settingsSTM.fyd;
+
+            maxStressC = settingsSTM.fcd * (1 - (settingsSTM.fck / 1e6) / 250.0); // Extra factor from EC (nu)
 
             ls = new double[nElements];
             dAs = new double[nElements];
@@ -137,7 +157,7 @@ namespace Krill
             minimumEnforcedAreas = new double[nElements];
         }
 
-        public double stepTol = 1e-12;
+        public double stepTol = 1e-16;
         public double ArmijoStep(double[] gradient, ref double a, out double stepLength, double gamma)
         {
             double c1 = 0.001;
@@ -146,6 +166,7 @@ namespace Krill
             double dot = Vector.DotProduct(nVariables, gradient, realGradient);
             double sqdot = Math.Sqrt(dot);
             double manhattan = gradient.Sum(x => Math.Abs(x));
+
 
             double newValue, expectedValue;
             a *= 2.2;
@@ -254,6 +275,7 @@ namespace Krill
             ExtraElements.Add(new Tuple<Point3d, int, double>(extra, to, load));
             Point3d pt = new Point3d(xs[to * 3], xs[to * 3 + 1], xs[to * 3 + 2]);
             var dir = pt - extra;
+            dir.Unitize();
             f[to * 3] += dir.X * load;
             f[to * 3 + 1] += dir.Y * load;
             f[to * 3 + 2] += dir.Z * load;
@@ -444,7 +466,7 @@ namespace Krill
             utilizationFactor = factor;
             penaltyFactor = factor;
 
-            smoothingFunctionScale = 0.01;
+            smoothingFunctionScale = 1e-6;
 
             // This isn't a real penalty only a cost function
             // orthogonalityFactor = factor;
@@ -522,7 +544,7 @@ namespace Krill
 
         double reinforcmentFactor = 1;
 
-        double maxStressC = 1;
+        //double maxStressC = 1;
 
         double utilizationFactor = 1;
         double utilizationMargin = 0.1;
@@ -647,14 +669,17 @@ namespace Krill
                 // Utilization
                 double sigma = E * As[i] * ep;
                 Func<double, double> Square = x => x * x;
-                utilizationStruts -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1])));
-                utilizationStruts -= Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2])));
+                if (sigma < 0)
+                {
+                    utilizationStruts += Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item1 / (maxStressC * capacityReduction[connections[i].Item1])));
+                    utilizationStruts += Square(Math.Min(0, 1 - utilizationMargin + sigma / endAreas[i].Item2 / (maxStressC * capacityReduction[connections[i].Item2])));
+                }
 
                 // Penalty
                 if (ep > 0)
                 {
                     double stress = Esteel * ep;
-                    double t = stress - fyd;
+                    double t = (stress - fyd)/fyd;
 
                     if (useWfunction)
                         utilizationTies += t * t * stress * stress;
@@ -687,18 +712,26 @@ namespace Krill
                 // Reinforcement
                 if (ep > 0)
                 {
+                    
                     reinforcement += AsE[i] * lsE[i] * SmoothingFunction(E * ep, smoothingFunctionScale);
                 }
-                // Utilization
-                double cap = capacityReduction[ExtraElements[i].Item2];
 
-                utilizationStruts -= Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap));
+
+                // Utilization
+                Func<double, double> Square = x => x * x;
+                if (ep < 0)
+                {
+                    double cap = capacityReduction[ExtraElements[i].Item2];
+
+                    utilizationStruts += Square(Math.Min(0, 1 - utilizationMargin + E * ep / (maxStressC * cap)));
+                }
+                
 
                 // Penalty
                 if (ep > 0)
                 {
                     double stress = Esteel * ep;
-                    double t = stress - fyd;
+                    double t = (stress - fyd)/fyd;
 
                     if (useWfunction)
                         utilizationTies += t * t * stress * stress;
@@ -779,14 +812,17 @@ namespace Krill
                 dAreaSE(i, dindex, out dAstart, out dAend);
 
                 double temp = E * A * ep;
-                double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
-                double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
+                if (temp != 0)
+                {
+                    double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
+                    double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
 
-                if (startValC < 0)
-                    utilization -= 2 * startValC * E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart * maxStressC);
+                    if (startValC < 0)
+                        utilization += 2 * startValC * E * (deps * A * Astart + ep * dA * Astart - ep * A * dAstart) / (Astart * Astart * maxStressC);
 
-                if (endValC < 0)
-                    utilization -= 2 * endValC * E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend * maxStressC);
+                    if (endValC < 0)
+                        utilization += 2 * endValC * E * (deps * A * Aend + ep * dA * Aend - ep * A * dAend) / (Aend * Aend * maxStressC);
+                }
 
                 // Penalty
                 if (ep > 0)
@@ -798,10 +834,10 @@ namespace Krill
                     }
                     else
                     {
-                        double t = ep * Esteel - fyd;
+                        double t = (ep * Esteel - fyd)/(fyd);
                         if (t > 0)
                         {
-                            penalty += 2 * t * deps * Esteel;
+                            penalty += 2 * t * deps * Esteel / fyd;
                         }
                     }
                 }
@@ -852,10 +888,10 @@ namespace Krill
                     }
                     else
                     {
-                        double t = ep * Esteel - fyd;
+                        double t = (ep * Esteel - fyd)/fyd;
                         if (t > 0)
                         {
-                            penalty += 2 * t * deps * Esteel;
+                            penalty += 2 * t * deps * Esteel / fyd;
                         }
                     }
                 }
@@ -903,14 +939,17 @@ namespace Krill
                 double Aend = endAreas[i].Item2;
 
                 double temp = E * A * ep;
-                double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
-                double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
+                if (temp != 0)
+                {
+                    double startValC = temp / Astart / (maxStressC * capacityReduction[connections[i].Item1]) + 1 - utilizationMargin;
+                    double endValC = temp / Aend / (maxStressC * capacityReduction[connections[i].Item2]) + 1 - utilizationMargin;
 
-                if (startValC < 0)
-                    utilization -= 2 * startValC * E * deps * A / (endAreas[i].Item1 * maxStressC);
+                    if (startValC < 0)
+                        utilization += 2 * startValC * E * deps * A / (endAreas[i].Item1 * maxStressC);
 
-                if (endValC < 0)
-                    utilization -= 2 * endValC * E * deps * A / (endAreas[i].Item2 * maxStressC);
+                    if (endValC < 0)
+                        utilization += 2 * endValC * E * deps * A / (endAreas[i].Item2 * maxStressC);
+                }
 
                 // Penalty
                 if (ep > 0)
@@ -922,10 +961,10 @@ namespace Krill
                     }
                     else
                     {
-                        double t = ep * Esteel - fyd;
+                        double t = (ep * Esteel - fyd)/fyd;
                         if (t > 0)
                         {
-                            penalty += 2 * t * deps * Esteel;
+                            penalty += 2 * t * deps * Esteel / fyd;
                         }
                     }
                 }
@@ -1026,6 +1065,12 @@ namespace Krill
 
             double areaS = n.X * boxS.Y * boxS.Z + n.Y * boxS.X * boxS.Z + n.Z * boxS.X * boxS.Y;
             double areaE = n.X * boxE.Y * boxE.Z + n.Y * boxE.X * boxE.Z + n.Z * boxE.X * boxE.Y;
+
+            if (areaS < 1e-6 || areaE < 1e-6)
+            {
+                endAreas[i] = new Tuple<double, double>(0, 0);
+                return Math.Max(0, 0.0);
+            }
 
             if (eps[i] > 0)
             {

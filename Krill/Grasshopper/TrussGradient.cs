@@ -31,6 +31,8 @@ namespace Krill.Grasshopper
             pManager.AddIntegerParameter("n", "n", "", GH_ParamAccess.item);
             pManager.AddNumberParameter("alpha", "a", "", GH_ParamAccess.item);
             pManager.AddBooleanParameter("lockZ", "lockZ", "", GH_ParamAccess.item);
+            pManager.AddParameter(new Param.SettingsSTMParam());
+            pManager[6].Optional = true;
         }
 
         /// <summary>
@@ -45,6 +47,9 @@ namespace Krill.Grasshopper
             pManager.AddLineParameter("lines", "l", "", GH_ParamAccess.list);
             pManager.AddNumberParameter("areas", "a", "", GH_ParamAccess.list);
             pManager.AddGenericParameter("test", "t", "", GH_ParamAccess.list);
+            pManager.AddGenericParameter("graphVals", "vals", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("Penality modification location", "penLoc", "", GH_ParamAccess.list);
+            pManager.AddNumberParameter("STM location", "stmLoc", "", GH_ParamAccess.list);
         }
 
         /// <summary>
@@ -73,11 +78,19 @@ namespace Krill.Grasshopper
             bool lockZ = false;
             DA.GetData(5, ref lockZ);
 
+            Containers.SettingsSTM settings = null;
+            Param.SettingsSTMGoo res = null;
+            DA.GetData(6, ref res);
+            if (res is null)
+                settings = new Containers.SettingsSTM();
+            else
+                settings = res.Value;
+
             if (truss?.Value is null)
                 return;
 
             var energyTruss = new InternalEnergyTruss();
-            energyTruss.Init(truss.Value);
+            energyTruss.Init(truss.Value, settings);
             energyTruss.SDF = boxSDFGoo?.Value;
             foreach (var bc in BCs)
             {
@@ -121,19 +134,25 @@ namespace Krill.Grasshopper
             double gamma = 1;
             double stepLength = double.MaxValue;
             double energy = double.MaxValue;
+
+            List<Tuple<int, int, double, double>> funcVals = new List<Tuple<int, int, double, double>>();
+            List<int> penLoc = new List<int>();
+            List<int> stmLoc = new List<int>();
             
             int iter = 0;
             for (int stmIter = 0; stmIter < 10; stmIter++)
             {
-                energyTruss.SetPenalties(5);
+                energyTruss.SetPenalties(10);
                 energyTruss.SetData(null);
                 energy = energyTruss.ComputeValue();
 
                 for (int penIter = 0; penIter < 10; penIter++)
                 {
                     intermidiateEnergy = double.MaxValue;
-                    while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n)
+                    int outerInnerIter = 0;
+                    while (Math.Abs(intermidiateEnergy - energy) > 1e-6 && iter < n && outerInnerIter <= 3)
                     {
+                        outerInnerIter++;
                         a = firstA;
                         // Node Locations
                         iter++;
@@ -150,12 +169,15 @@ namespace Krill.Grasshopper
                             energyTruss.ComputeGradient(ref gradient);
                             energy = energyTruss.ArmijoStep(gradient, ref a, out stepLength, gamma);
                             log.Add($"location iteration: {iter} Steplength: {stepLength} Energy: {energy}");
+
+                            funcVals.Add(new Tuple<int, int, double, double>(iter, 0, energyTruss.functionVals()[0], energy));
+
                             // Steplength is the square distance moved ish (as if everything is thought of as one vector)
                             if (stepLength < energyTruss.stepTol)
                                 break;
 
                             innnerIter++;
-                            if (innnerIter >= 100)
+                            if (innnerIter >= 50)
                                 break;
                         }
                         intermidiateEnergy = energy;
@@ -175,12 +197,15 @@ namespace Krill.Grasshopper
                             energyTruss.ComputeGradientA(ref gradientA);
                             energy = energyTruss.ArmijoStepA(gradientA, ref a, out stepLength, gamma);
                             log.Add($"area iteration: {iter} Steplength: {stepLength} Energy: {energy}");
+
+                            funcVals.Add(new Tuple<int, int, double, double>(iter, 1, energyTruss.functionVals()[0], energy));
+
                             // Steplength is the square distance moved ish (as if everything is thought of as one vector)
                             if (stepLength < energyTruss.stepTol)
                                 break;
 
                             innnerIter++;
-                            if (innnerIter >= 100)
+                            if (innnerIter >= 50)
                                 break;
                         }
                     }
@@ -188,10 +213,11 @@ namespace Krill.Grasshopper
                         break;
 
 
-                    energyTruss.ModifyPenalties(2);
+                    energyTruss.ModifyPenalties(10);
                     energyTruss.SetData(null);
                     energy = energyTruss.ComputeValue();
                     log.Add($"----- penalty modification -----  Energy: {energy}");
+                    penLoc.Add(iter);
                 }
 
                 if (iter < n)
@@ -200,11 +226,14 @@ namespace Krill.Grasshopper
                     intermidiateEnergy = energy;
                     energy = energyTruss.ComputeValue();
                     log.Add($"////// STM modification ////// Energy: {energy}");
+                    stmLoc.Add(iter);
+
                     if (Math.Abs(intermidiateEnergy - energy) < 1e-6)
                         break;
                 }
             }
             // Post processing
+            double[] test = energyTruss.functionVals();
             var displac = energyTruss.us;
 
             var grad = new List<Vector3d>();
@@ -230,6 +259,9 @@ namespace Krill.Grasshopper
             DA.SetDataList(4, lines);
             DA.SetDataList(5, energyTruss.Areas());
             DA.SetDataList(6, energyTruss.endAreas);
+            DA.SetDataList(7, funcVals);
+            DA.SetDataList(8, penLoc);
+            DA.SetDataList(9, stmLoc);
         }
 
         /// <summary>
