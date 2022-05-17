@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 
 using Grasshopper.Kernel;
 using Rhino.Geometry;
@@ -108,22 +109,31 @@ namespace Krill.Grasshopper
                             // Check so that the line stays within the body and does not already exist
                             // Also check if it "skips" one node in between
                             if (InsideTest(l, mask) && 
-                                !AlreadyExistsTest(ind1, ind2, connections) &&
-                                !SkipNodeTest(ind1, ind2, nodes, mask.delta))
+                                !AlreadyExistsTest(ind1, ind2, connections))
                             {
                                 connections.Add(new Tuple<int, int>(ind1, ind2));
                                 trussLines.Add(l);
                             }
+
+                            //if (InsideTest(l, mask) &&
+                            //    !AlreadyExistsTest(ind1, ind2, connections) &&
+                            //    !SkipNodeTest(ind1, ind2, nodes, mask.delta))
+                            //{
+                            //    connections.Add(new Tuple<int, int>(ind1, ind2));
+                            //    trussLines.Add(l);
+                            //}
                         }
                     }
                 }
             }
 
+            var extraAreas = new double[ connections.Count - trussGeo.Areas.Count].Select(x => 0.1);
+
             Param.TrussGeometryGoo newTrussGeo = new Param.TrussGeometryGoo(new TrussGeometry()
             {
                 Nodes = nodes,
                 Connections = connections,
-                Areas = trussGeo.Areas
+                Areas = trussGeo.Areas.Concat(extraAreas).ToList()
             });
 
             if (newTrussGeo != null)
