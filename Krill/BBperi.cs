@@ -686,10 +686,10 @@ namespace Krill
 
                 // Find load direction
                 Vector3d localLoad = bc.load;
+                var pt = startVoxels.IndexToPoint(i);
+                bc.area.ClosestPoint(pt, out var onMesh, out var surfaceNormal, startVoxels.delta * 7);
                 if (bc.normal)
                 {
-                    var pt = startVoxels.IndexToPoint(i);
-                    bc.area.ClosestPoint(pt, out var onMesh, out var surfaceNormal, startVoxels.delta * 7);
                     localLoad = surfaceNormal * bc.load.Z;
                 }
                 localLoad.Unitize();
@@ -705,23 +705,33 @@ namespace Krill
                     {
                         connects = true;
 
-                        Vector3d xi = xis[a];
-                        localLoadFactor += new Vector3d(
-                            xi.X * xi.X * localLoad.X + xi.X * xi.Y * localLoad.Y + xi.X * xi.Z * localLoad.Z,
-                            xi.Y * xi.X * localLoad.X + xi.Y * xi.Y * localLoad.Y + xi.Y * xi.Z * localLoad.Z,
-                            xi.Z * xi.X * localLoad.X + xi.Z * xi.Y * localLoad.Y + xi.Z * xi.Z * localLoad.Z);
+                        Vector3d xi = nlist_xi[a];
+
+                        Vector3d strain = (xi * surfaceNormal) * surfaceNormal;
+
+                        var temp = new Vector3d(
+                            xi.X * xi.X * strain.X + xi.X * xi.Y * strain.Y + xi.X * xi.Z * strain.Z,
+                            xi.Y * xi.X * strain.X + xi.Y * xi.Y * strain.Y + xi.Y * xi.Z * strain.Z,
+                            xi.Z * xi.X * strain.X + xi.Z * xi.Y * strain.Y + xi.Z * xi.Z * strain.Z);
+                        double l = nlist_xi_length[a];
+                        temp /= l * l * l;
+                        localLoadFactor += temp;
                     }
 
                     J = i - nlist[a];
                     if ((startVoxels.cellValues[J] & tag) != 0 && (startVoxels.cellValues[J] & 3) == 0)
                     {
-                        connects = true;
+                        Vector3d xi = -nlist_xi[a];
 
-                        Vector3d xi = -xis[a];
-                        localLoadFactor += new Vector3d(
-                            xi.X * xi.X * localLoad.X + xi.X * xi.Y * localLoad.Y + xi.X * xi.Z * localLoad.Z,
-                            xi.Y * xi.X * localLoad.X + xi.Y * xi.Y * localLoad.Y + xi.Y * xi.Z * localLoad.Z,
-                            xi.Z * xi.X * localLoad.X + xi.Z * xi.Y * localLoad.Y + xi.Z * xi.Z * localLoad.Z);
+                        Vector3d strain = (xi * surfaceNormal) * surfaceNormal;
+
+                        var temp = new Vector3d(
+                            xi.X * xi.X * strain.X + xi.X * xi.Y * strain.Y + xi.X * xi.Z * strain.Z,
+                            xi.Y * xi.X * strain.X + xi.Y * xi.Y * strain.Y + xi.Y * xi.Z * strain.Z,
+                            xi.Z * xi.X * strain.X + xi.Z * xi.Y * strain.Y + xi.Z * xi.Z * strain.Z);
+                        double l = nlist_xi_length[a];
+                        temp /= l * l * l;
+                        localLoadFactor += temp;
                     }
                 }
                 if (connects)
@@ -730,7 +740,12 @@ namespace Krill
 
                     double volumeFactor = (double)(nlist.Length * 2.0 + 1.0) / (double)(startVoxels.cellValues[i] >> 20);
 
-                    localLoadFactor = localLoad * localLoadFactor.Length * volumeFactor;
+                    volumeFactor = (volumeFactor - 1) * 0.25 + 1;
+
+                    //localLoadFactor = localLoad * localLoadFactor.Length * volumeFactor;
+
+                    localLoadFactor = (localLoad * localLoadFactor) * localLoad;
+                    localLoadFactor *= volumeFactor;
 
                     loads.Add(localLoadFactor);
                     indices.Add(i);
@@ -804,6 +819,7 @@ namespace Krill
             Vector3d disp = bc.normal ? normal * bc.displacement.Z : bc.displacement;
 
             double factor = (double)(nlist.Length * 2.0 + 1.0) / (double)(sum + localsum);
+            factor = (factor - 1) * 0.25 + 1;
             resSpringConstant *= factor;
             spring.cellValues[i] += resSpringConstant;
             // Calculate a bodyload based on enforced displacment and the spring constant
