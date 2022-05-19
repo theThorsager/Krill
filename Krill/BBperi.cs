@@ -707,7 +707,7 @@ namespace Krill
 
                         Vector3d xi = nlist_xi[a];
 
-                        Vector3d strain = (xi * surfaceNormal) * surfaceNormal;
+                        Vector3d strain = (xi * surfaceNormal) * localLoad;
 
                         var temp = new Vector3d(
                             xi.X * xi.X * strain.X + xi.X * xi.Y * strain.Y + xi.X * xi.Z * strain.Z,
@@ -723,7 +723,7 @@ namespace Krill
                     {
                         Vector3d xi = -nlist_xi[a];
 
-                        Vector3d strain = (xi * surfaceNormal) * surfaceNormal;
+                        Vector3d strain = (xi * surfaceNormal) * localLoad;
 
                         var temp = new Vector3d(
                             xi.X * xi.X * strain.X + xi.X * xi.Y * strain.Y + xi.X * xi.Z * strain.Z,
