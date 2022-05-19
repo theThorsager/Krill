@@ -277,6 +277,59 @@ namespace Krill
             densities.cellValues[i] += xi_vec;
         }
 
+        public bool RemoveUnstressedVoxels(double factor, double E)
+        {
+            bool bol = false;
+            OutputResults2d vonMises = new OutputResults2d(new Containers.LinearSolution2d()
+            {
+                mask = startVoxels,
+                bodyload = this.bodyload,
+                nList = this.nlist,
+                elasticModulus = E,
+                bondStiffness = bond_stiffness,
+                springs = this.spring
+            });
+
+            vonMises.UpdateFakeStress2(dispVoxels);
+            vonMises.UpdateVonMises();
+
+            double maxVon = vonMises.vonMises.cellValues.Max();
+            double cutoff = maxVon * factor;
+
+            for (int i = 0; i < noVoxels * noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                if (vonMises.vonMises.cellValues[i] < cutoff)
+                {
+                    startVoxels.cellValues[i] = 0;
+                    bol = true;
+                }
+            }
+            return bol;
+        }
+
+        public bool RemoveUnderUtilizedVoxels(double factor)
+        {
+            bool bol = false;
+            double maxUti = utilization.cellValues.Max();
+            double cutoff = maxUti * factor;
+
+            for (int i = 0; i < noVoxels * noVoxels; i++)
+            {
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
+
+                if (utilization.cellValues[i] < cutoff)
+                {
+                    startVoxels.cellValues[i] = 0;
+                    bol = true;
+                }
+            }
+            return bol;
+        }
+
         public double TotalDisplacement()
         {
             // deal with rigid body motion?

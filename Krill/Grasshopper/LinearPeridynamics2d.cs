@@ -351,6 +351,51 @@ namespace Krill.Grasshopper
                         break;
                 }
 
+                ///////////////////////
+                //Evolutionary structural optimisation
+
+                //double ER = 0.005;
+
+                //for (double RR = 0.01; RR < 0.6; RR += ER)
+                //{
+                //    for (int j = 0; j < 50; j++)
+                //    {
+                //        //if (!model.RemoveUnderUtilizedVoxels(RR))
+                //        //    break;
+
+                //        if (!model.RemoveUnstressedVoxels(RR, settings.E))
+                //            break;
+
+                //        for (; i < settings.n_timesteps; i++)
+                //        {
+                //            // compute the acceleration
+                //            model.UpdateForce();
+                //            // Verlet integration, to update pos
+                //            double c = model.CalculateDampening();
+                //            model.UpdateDisp(c * 0.5);
+
+                //            double residual = model.ComputeResidual(F);
+                //            if (i % 10 == n_load_stepping % 10)
+                //            {
+                //                if (CancellationToken.IsCancellationRequested) return;
+
+                //                conduit.SetDisplacments(model.dispVoxels);
+                //                conduit.Update();
+                //                if (i == n_load_stepping)
+                //                {
+                //                    residual_scale = Math.Log(residual);
+                //                    ReportProgress(Id, 0);
+                //                }
+                //                else
+                //                    ReportProgress(Id, (Math.Log(residual) - residual_scale) / (logtol - residual_scale));
+                //            }
+                //            // Check termination criteria
+                //            if (residual < tolerance)
+                //                break;
+                //        }
+                //    }
+                //}
+
                 // Try to converge with relaxing of tension
                 //ReportProgress(Id, 0);
                 //model.relaxTension = true;

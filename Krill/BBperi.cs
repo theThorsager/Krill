@@ -303,9 +303,9 @@ namespace Krill
             densities.cellValues[i] += xi_vec;
         }
 
-        public void RemoveUnstressedVoxels(double factor, double E)
+        public bool RemoveUnstressedVoxels(double factor, double E)
         {
-
+            bool bol = false;
             OutputResults vonMises = new OutputResults(new Containers.LinearSolution() { mask = startVoxels,
                                                                                          bodyload = this.bodyload,
                                                                                          nList = this.nlist,
@@ -313,8 +313,9 @@ namespace Krill
                                                                                          bondStiffness = bond_stiffness,
                                                                                          springs = this.spring } );
 
-            vonMises.UpdateFakeStrains(dispVoxels);
-            vonMises.UpdateStresses();
+            //vonMises.UpdateFakeStrains(dispVoxels);
+            //vonMises.UpdateStresses();
+            vonMises.UpdateFakeStress2(dispVoxels);
             vonMises.UpdateVonMises();
 
             double maxVon = vonMises.vonMises.cellValues.Max();
@@ -322,10 +323,16 @@ namespace Krill
 
             for (int i = 0; i < noVoxels*noVoxels*noVoxels; i++)
             {
-                if (vonMises.vonMises.cellValues[i] < cutoff)
-                    startVoxels.cellValues[i] = 0;
-            }
+                if ((startVoxels.cellValues[i] & maskbit) == 0)
+                    continue;
 
+                if (vonMises.vonMises.cellValues[i] < cutoff)
+                {
+                    startVoxels.cellValues[i] = 0;
+                    bol = true;
+                }                    
+            }
+            return bol;
         }
 
         public bool RemoveUnderUtilizedVoxels(double factor)
